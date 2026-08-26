@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% block title %}Images - Bindex{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Images <span class="text-secondary small">({{ total }})</span></h4>
+  {% if current_user.is_admin %}
+  <button type="button" id="bulkDeleteBtn" class="btn btn-outline-danger btn-sm" disabled>
+    <i class="bi bi-trash"></i> Delete selected (<span id="bulkDeleteCount">0</span>)
+  </button>
+  {% endif %}
+</div>
+{% if current_user.is_admin %}
+<form method="post" action="{{ url_for('images.bulk_delete') }}" id="bulkDeleteForm" class="d-none"
+      onsubmit="return confirm('Delete the selected photo(s)? This cannot be undone.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endif %}
+
+<div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3">
+  <form method="get" class="mb-0 filter-form">
+    {# Keyword and filter sit in one input group so available width can't
+       split them across two lines, and they read as a single control. #}
+    <div class="input-group filter-bar">
+      <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="Search by MPN...">
+      <select class="form-select" name="cover" onchange="this.form.submit()">
+        <option value="" {{ 'selected' if not cover }}>All photos</option>
+        <option value="1" {{ 'selected' if cover == '1' }}>Cover only</option>
+        <option value="0" {{ 'selected' if cover == '0' }}>Non-cover only</option>
+      </select>
+      <button type="submit" class="btn btn-outline-secondary"><i class="bi bi-search"></i></button>
+      {% if q or cover %}<a href="{{ url_for('images.index') }}" class="btn btn-outline-secondary">Clear</a>{% endif %}
+    </div>
+  </form>
+  <div>
+    <label class="text-secondary small mb-1 d-block">Preview style</label>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Preview mode">
+      <input type="radio" class="btn-check" name="previewModeRadio" id="previewModePanel" autocomplete="off" {{ 'checked' if preview_mode != 'modal' }}>
+      <label class="btn btn-outline-secondary" for="previewModePanel" title="Preview in the side panel"><i class="bi bi-layout-sidebar-inset-reverse"></i> Panel</label>
+      <input type="radio" class="btn-check" name="previewModeRadio" id="previewModeModal" autocomplete="off" {{ 'checked' if preview_mode == 'modal' }}>
+      <label class="btn btn-outline-secondary" for="previewModeModal" title="Preview in a floating window sized to fit your screen"><i class="bi bi-window-stack"></i> Floating</label>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 preview-layout {{ 'preview-hidden' if preview_mode == 'modal' }}" id="previewLayout">
+  <div class="col-12 preview-list-col" id="imgListCol">
+
+    <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          {% if current_user.is_admin %}
+          <th style="width: 2.5em;"><input type="checkbox" class="form-check-input" id="selectAllCheckbox"></th>
+          {% endif %}
+          <th style="width: 4em;"></th>
+          <th>Linked parts</th>
+          <th>Cover</th>
+          <th>Uploaded</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for photo in photos %}
+        {% set full_url = url_for('parts.uploaded_file', rel_path=photo.file_path) %}
+        {% set thumb_url = url_for('parts.uploaded_file', rel_path=photo.thumbnail_path or photo.file_path) %}
+        {% set is_cover_anywhere = photo.part_links|selectattr('is_primary')|list|length > 0 %}
+        <tr>
+          {% if current_user.is_admin %}
+          <td><input type="checkbox" class="form-check-input img-select-checkbox" value="{{ photo.id }}"></td>
+          {% endif %}
+          <td><img src="{{ thumb_url }}" data-photo-thumb="{{ photo.id }}" alt="" class="rounded" style="width: 2.5em; height: 2.5em; object-fit: cover;"></td>
+          <td>
+            {% if photo.parts %}
+            {% for p in photo.parts %}<a href="{{ url_for('parts.detail', part_id=p.id) }}">{{ p.mpn }}</a>{{ ', ' if not loop.last }}{% endfor %}
+            {% else %}
+            <span class="text-secondary small">not linked to any part</span>
+            {% endif %}
+          </td>
+          <td>{% if is_cover_anywhere %}<i class="bi bi-star-fill text-warning" title="Cover photo for at least one linked part"></i>{% endif %}</td>
+          <td class="text-nowrap">{{ photo.uploaded_at.strftime('%Y-%m-%d') if photo.uploaded_at else '-' }}</td>
+          <td class="text-end">
+            <div class="btn-group btn-group-sm">
+              <button type="button" class="btn btn-outline-secondary preview-btn"
+                      data-url="{{ full_url }}"
+                      data-title="{{ photo.parts|map(attribute='mpn')|join(', ') or 'Photo' }}"
+                      data-kind="image"
+                      data-photo-id="{{ photo.id }}"
+                      data-crop="{{ photo.crop_box or '' }}"
+                      title="Preview"><i class="bi bi-eye"></i></button>
+              <button type="button" class="btn btn-outline-secondary recrop-btn" title="Adjust thumbnail crop"
+                      data-photo-id="{{ photo.id }}"
+                      data-full-url="{{ full_url }}"
+                      data-suggestion-url="{{ url_for('parts.photo_crop_suggestion', photo_id=photo.id) }}"
+                      data-recrop-url="{{ url_for('parts.photo_recrop', photo_id=photo.id) }}">
+                <i class="bi bi-crop"></i>
+              </button>
+              {% if current_user.is_admin %}
+              <form method="post" action="{{ url_for('images.delete', photo_id=photo.id) }}"
+                    onsubmit="return confirm('Delete this photo?{{ (' It is linked to ' ~ photo.parts|length ~ ' part(s), which will lose it.') if photo.parts else '' }} This cannot be undone.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ 6 if current_user.is_admin else 5 }}" class="text-center text-secondary py-4">No images{{ ' matching "' ~ q ~ '"' if q }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+      <div>
+        {% if total_pages > 1 %}
+        <nav>
+          <ul class="pagination mb-0">
+            {% for pnum in page_window(page, total_pages) %}
+            {% if pnum %}
+            <li class="page-item {{ 'active' if pnum == page }}">
+              <a class="page-link" href="{{ url_for('images.index', q=q, cover=cover, page=pnum, page_size=page_size) }}">{{ pnum }}</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+            {% endif %}
+            {% endfor %}
+          </ul>
+        </nav>
+        {% endif %}
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <label for="pageSizeSelect" class="text-secondary small mb-0 text-nowrap">Per page</label>
+        <select id="pageSizeSelect" class="form-select form-select-sm" style="width: 5.5em;">
+          {% for n in page_size_options %}
+          <option value="{{ n }}" {{ 'selected' if page_size == n }}>{{ n }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col-12 preview-panel-col" id="imgPreviewCol">
+    <div class="preview-pane">
+      <div class="preview-pane-head">
+        <span id="previewTitle" class="text-truncate">Preview</span>
+        <a id="previewOpenLink" href="#" target="_blank" rel="noopener" class="preview-pane-open d-none" title="Open in a new tab"><i class="bi bi-box-arrow-up-right"></i></a>
+      </div>
+      <div class="preview-pane-body d-flex align-items-center justify-content-center">
+        <div id="previewEmpty" class="text-secondary small text-center px-3">
+          Click <i class="bi bi-eye mx-1"></i> next to an image to preview it here.
+        </div>
+        <span class="crop-wrap d-none" id="previewImageWrap">
+          <img id="previewImage" style="max-width: 100%; max-height: 100%;" alt="">
+          <span class="crop-box d-none" id="previewCrop"></span>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% include "_preview_modal.html" %}
+
+{% include "_recrop_modal.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+var imgPreviewMode = {{ preview_mode|tojson }};
+
+function showPreviewPanel(url, title, crop) {
+  document.getElementById('previewEmpty').classList.add('d-none');
+  document.getElementById('previewTitle').textContent = title;
+  var openLink = document.getElementById('previewOpenLink');
+  openLink.href = url;
+  openLink.classList.remove('d-none');
+  var wrap = document.getElementById('previewImageWrap');
+  var img = document.getElementById('previewImage');
+  var cropBox = document.getElementById('previewCrop');
+  // applyCropOverlay comes from the shared preview partial; the box can
+  // only be measured once the image has its natural dimensions.
+  img.onload = function () { applyCropOverlay(img, cropBox, crop); };
+  wrap.classList.remove('d-none');
+  img.src = url;
+}
+
+function showPreview(url, title, kind, crop) {
+  if (imgPreviewMode === 'modal') {
+    openPreviewModal(url, title, 'image', crop);
+  } else {
+    showPreviewPanel(url, title, crop);
+  }
+}
+
+// The shared partial wires .preview-btn; route it through the mode switch.
+window.onPreviewClick = showPreview;
+
+function applyPreviewLayout(mode) {
+  // Column widths are CSS's job (see .preview-layout); this just records
+  // which mode the row is in.
+  document.getElementById('previewLayout')
+    .classList.toggle('preview-hidden', mode === 'modal');
+}
+
+function setPreviewMode(mode) {
+  imgPreviewMode = mode;
+  applyPreviewLayout(mode);
+  fetch('{{ url_for("settings.quick_img_preview_mode") }}', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': window.CSRF_TOKEN || '',
+    },
+    body: JSON.stringify({ mode: mode }),
+  }).catch(function () {});
+}
+
+document.getElementById('previewModePanel').addEventListener('change', function () {
+  if (this.checked) setPreviewMode('panel');
+});
+document.getElementById('previewModeModal').addEventListener('change', function () {
+  if (this.checked) setPreviewMode('modal');
+});
+
+document.getElementById('pageSizeSelect').addEventListener('change', function () {
+  var pageSize = this.value;
+  fetch('{{ url_for("settings.quick_img_page_size") }}', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': window.CSRF_TOKEN || '',
+    },
+    body: JSON.stringify({ page_size: parseInt(pageSize, 10) }),
+  }).catch(function () {}).finally(function () {
+    var params = new URLSearchParams(window.location.search);
+    params.set('page_size', pageSize);
+    params.set('page', '1');
+    window.location.search = params.toString();
+  });
+});
+
+{% if current_user.is_admin %}
+(function () {
+  var selectAll = document.getElementById('selectAllCheckbox');
+  var rowChecks = Array.prototype.slice.call(document.querySelectorAll('.img-select-checkbox'));
+  var bulkBtn = document.getElementById('bulkDeleteBtn');
+  var countSpan = document.getElementById('bulkDeleteCount');
+  var bulkForm = document.getElementById('bulkDeleteForm');
+
+  function updateState() {
+    var checked = rowChecks.filter(function (c) { return c.checked; });
+    countSpan.textContent = checked.length;
+    bulkBtn.disabled = checked.length === 0;
+    if (selectAll) {
+      selectAll.checked = checked.length > 0 && checked.length === rowChecks.length;
+      selectAll.indeterminate = checked.length > 0 && checked.length < rowChecks.length;
+    }
+  }
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      rowChecks.forEach(function (c) { c.checked = selectAll.checked; });
+      updateState();
+    });
+  }
+  rowChecks.forEach(function (c) { c.addEventListener('change', updateState); });
+  updateState();
+
+  bulkBtn.addEventListener('click', function () {
+    var checked = rowChecks.filter(function (c) { return c.checked; });
+    if (!checked.length) return;
+    bulkForm.querySelectorAll('input[name="photo_ids"]').forEach(function (el) { el.remove(); });
+    checked.forEach(function (c) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'photo_ids';
+      input.value = c.value;
+      bulkForm.appendChild(input);
+    });
+    bulkForm.submit();
+  });
+})();
+{% endif %}
+</script>
+{% endblock %}

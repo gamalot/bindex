@@ -1,0 +1,511 @@
+{% extends "base.html" %}
+{% block title %}{{ part.mpn }} - Bindex{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+  <div>
+    <h4 class="mb-1">
+      {{ part.mpn }}
+      <a href="{{ search_url }}{{ part.mpn|urlencode }}" target="_blank" rel="noopener" class="text-secondary" title="Search &quot;{{ part.mpn }}&quot; online" style="font-size: 0.7em;"><i class="bi bi-search"></i></a>
+      {% if part.is_suspect_fake %}<span class="badge badge-fake">Suspect counterfeit</span>{% endif %}
+    </h4>
+    <div class="text-secondary">
+      {% if part.category %}
+      {% for node in part.category.ancestors() + [part.category] %}
+      <a href="{{ url_for('parts.index', category_id=node.id) }}" class="text-secondary">{{ node.name }}</a>{{ ' / ' if not loop.last }}
+      {% endfor %}
+      {% else %}
+      Uncategorized
+      {% endif %}
+    </div>
+  </div>
+  <div class="btn-group">
+    <a href="{{ url_for('parts.edit', part_id=part.id) }}" class="btn btn-outline-secondary"><i class="bi bi-pencil"></i> Edit</a>
+    {% if current_user.is_admin %}
+    <form method="post" action="{{ url_for('parts.delete', part_id=part.id) }}" onsubmit="return confirm('Delete this part along with all its stock and transaction records? This cannot be undone.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-outline-danger"><i class="bi bi-trash"></i> Delete</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">Basic Info</div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-12 col-md-8">
+        <div class="mb-2 d-flex align-items-start gap-2"><span class="text-secondary small" style="width: 35%; flex-shrink: 0;">Total stock</span><span>{{ part.total_quantity|qty }}</span></div>
+        <div class="mb-2 d-flex align-items-start gap-2"><span class="text-secondary small" style="width: 35%; flex-shrink: 0;">Manufacturer</span><span>{{ part.manufacturer or '-' }}</span></div>
+        <div class="mb-2 d-flex align-items-start gap-2"><span class="text-secondary small" style="width: 35%; flex-shrink: 0;">Package</span><span>{{ part.package or '-' }}</span></div>
+        <div class="{{ 'mb-2' if attr_defs else '' }} d-flex align-items-start gap-2"><span class="text-secondary small" style="width: 35%; flex-shrink: 0;">Marking</span><span>{{ part.marking or '-' }}</span></div>
+        {% for ad in attr_defs %}
+        {% set v = values_by_def.get(ad.id) %}
+        <div class="{{ 'mb-2' if not loop.last }} d-flex align-items-start gap-2"><span class="text-secondary small" style="width: 35%; flex-shrink: 0;">{{ ad|attr_label }}</span><span>{{ part.format_attr_piece(ad, v) if v else '-' }}</span></div>
+        {% endfor %}
+      </div>
+      <div class="col-12 col-md-4">
+        <span class="text-secondary small">Photos</span>
+        {% if part.photos %}
+        <div class="photo-gallery mt-2">
+          <div class="photo-hero-wrap" id="photoHeroWrap">
+            <a href="{{ url_for('parts.uploaded_file', rel_path=part.photos[0].file_path) }}" target="_blank" id="photoHeroLink">
+              <img class="photo-hero" id="photoHeroImg" src="{{ url_for('parts.uploaded_file', rel_path=part.photos[0].thumbnail_path or part.photos[0].file_path) }}" alt="">
+            </a>
+            {% if part.photos|length > 1 %}
+            <button type="button" class="photo-nav photo-nav-prev" id="photoPrevBtn" aria-label="Previous photo"><i class="bi bi-chevron-left"></i></button>
+            <button type="button" class="photo-nav photo-nav-next" id="photoNextBtn" aria-label="Next photo"><i class="bi bi-chevron-right"></i></button>
+            {% endif %}
+          </div>
+          {% if part.photos|length > 1 %}
+          <div class="photo-thumbs" id="photoThumbs">
+            {% for photo in part.photos %}
+            <img class="photo-thumb-sm {{ 'active' if loop.first }}" data-index="{{ loop.index0 }}"
+                 src="{{ url_for('parts.uploaded_file', rel_path=photo.thumbnail_path or photo.file_path) }}"
+                 data-thumb="{{ url_for('parts.uploaded_file', rel_path=photo.thumbnail_path or photo.file_path) }}"
+                 data-full="{{ url_for('parts.uploaded_file', rel_path=photo.file_path) }}" alt="">
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% else %}
+        <p class="text-secondary mb-0 mt-2">No photos yet</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">Stock</div>
+  <div class="card-body">
+    <div class="table-responsive">
+    <table class="table table-sm">
+      <thead><tr><th>Location</th><th>Qty</th><th>Unit Price</th><th>Received</th><th></th></tr></thead>
+      <tbody>
+        {% for lot in part.active_lots|sort(attribute='received_at') %}
+        <tr>
+          <td>{{ lot.location.path_name() }}</td>
+          <td>
+            {{ lot.quantity_remaining|qty }}
+            {% if lot.quantity_remaining != lot.quantity_received %}
+            <span class="text-secondary small">of {{ lot.quantity_received|qty }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {{ lot.unit_price|price(lot.currency) }}
+          </td>
+          <td class="text-nowrap">{{ lot.received_at.strftime('%Y-%m-%d') }}</td>
+          <td class="text-end">
+            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Correct this batch's price"
+                    data-bs-toggle="modal" data-bs-target="#editLotPriceModal{{ lot.id }}">
+              <i class="bi bi-pencil"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-secondary">No stock yet</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="btn-group btn-group-sm mb-3">
+      <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#inModal"><i class="bi bi-box-arrow-in-down"></i> Stock In</button>
+      <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#outModal"><i class="bi bi-box-arrow-up"></i> Stock Out</button>
+      <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#cartModal"><i class="bi bi-cart-plus"></i> Add to Cart</button>
+      <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#returnModal"><i class="bi bi-arrow-counterclockwise"></i> Return</button>
+      <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#moveModal"><i class="bi bi-arrow-left-right"></i> Move</button>
+      <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#adjustModal"><i class="bi bi-tools"></i> Adjust</button>
+    </div>
+
+    <hr>
+    <h6 class="text-secondary small text-uppercase mb-2">Transactions</h6>
+    <div class="table-responsive">
+      <table class="table table-sm mb-0" id="txTable">
+        <thead><tr><th>Time</th><th>Type</th><th>Location</th><th>Qty</th><th>Balance</th><th>Operator</th><th>Note</th><th></th></tr></thead>
+        <tbody>
+          {% for t in part.transactions[:20] %}
+          <tr class="{{ '' if loop.first else 'tx-extra d-none' }}">
+            <td class="text-nowrap">{{ t.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>{{ t.type|tx_type }}</td>
+            <td>{{ t.location.path_name() }}</td>
+            <td class="{{ 'text-success' if t.quantity_delta > 0 else 'text-danger' }}">{{ '+%d'|format(t.quantity_delta) if t.quantity_delta > 0 else t.quantity_delta }}</td>
+            <td>{{ t.balance_after }}</td>
+            <td>{{ t.operator.username if t.operator else '-' }}</td>
+            <td>{{ t.reason or '-' }}</td>
+            <td class="text-end text-nowrap">
+              {% if loop.first and part.transactions|length > 1 %}
+              <button type="button" class="btn btn-sm btn-link p-0" id="txToggleBtn" title="Show all (up to 20)">
+                <i class="bi bi-chevron-down"></i>
+              </button>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-secondary text-center py-3">No records yet</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Documents</div>
+  <div class="card-body">
+    <ul class="list-group list-group-flush mb-0">
+      {% for doc in part.documents %}
+      {% set ext = doc.file_path.rsplit('.', 1)[-1].lower() if doc.file_path else '' %}
+      <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
+        <span>
+          <span class="text-secondary small me-1">{{ doc_types.get(doc.doc_type, doc.doc_type) }}</span>
+          {% if doc.url %}<a href="{{ doc.url }}" target="_blank" rel="noopener">{{ doc.title }}</a>
+          {% elif doc.file_path %}<a href="{{ url_for('documents.file', doc_id=doc.id) }}" target="_blank">{{ doc.title }}</a>
+          {% else %}{{ doc.title }}{% endif %}
+          {% set icon, kind = doc|doc_icon %}<i class="bi bi-{{ icon }} text-secondary ms-1" title="{{ kind }}"></i>
+          {% if doc.parts|length > 1 %}<span class="text-secondary small">(shared by {{ doc.parts|length }} parts)</span>{% endif %}
+        </span>
+        {% set previewable = ext in ('pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'txt', 'md') %}
+        {% if previewable %}
+        <button type="button" class="btn btn-sm btn-outline-secondary preview-btn flex-shrink-0" title="Preview"
+                data-url="{{ url_for('documents.file', doc_id=doc.id) }}"
+                data-title="{{ doc.title }}"
+                data-kind="{{ 'image' if ext in ('png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp') else 'pdf' }}"><i class="bi bi-eye"></i></button>
+        {% endif %}
+      </li>
+      {% else %}
+      <li class="list-group-item text-secondary">No documents yet — add some from the <a href="{{ url_for('parts.edit', part_id=part.id) }}">edit page</a>.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+{% include "_preview_modal.html" %}
+
+{# Where this part already sits, listed first. There are ~750 locations, so
+   scrolling the full list to restock something is a chore — worse on a
+   touch screen, where it's a 750-row picker wheel — and more stock of a
+   part you already have almost always goes back where the rest of it is. #}
+{% macro location_select(name) %}
+{% set current = part.active_lots|map(attribute='location')|unique(attribute='id')|list %}
+<select class="form-select" name="{{ name }}" required>
+  <option value="">Select a location</option>
+  {% if current %}
+  <optgroup label="Already stocked here">
+    {% for loc in current %}
+    <option value="{{ loc.id }}">{{ loc.code or loc.name }}</option>
+    {% endfor %}
+  </optgroup>
+  <optgroup label="All locations">
+  {% endif %}
+  {% for node, depth in location_options %}
+  <option value="{{ node.id }}">{{ '  ' * depth }}{{ node.code or node.name }}</option>
+  {% endfor %}
+  {% if current %}</optgroup>{% endif %}
+</select>
+{% endmacro %}
+
+{% macro lot_select(id) %}
+{% set lots = part.active_lots|sort(attribute='received_at') %}
+<select class="form-select" name="lot_id" id="{{ id }}" required>
+  {% if lots|length != 1 %}
+  <option value="">Select a batch</option>
+  {% endif %}
+  {% for lot in lots %}
+  <option value="{{ lot.id }}" data-remaining="{{ lot.quantity_remaining }}" {{ 'selected' if lots|length == 1 }}>
+    {{ lot.location.path_name() }} &mdash; {{ lot.quantity_remaining|qty }} left
+    {% if lot.unit_price is not none %}@ {{ lot.unit_price|price(lot.currency) }}{% endif %}
+    (received {{ lot.received_at.strftime('%Y-%m-%d') }})
+  </option>
+  {% endfor %}
+</select>
+{% endmacro %}
+
+{% macro return_lot_select(id) %}
+{% set lots = part.returnable_lots|sort(attribute='received_at') %}
+<select class="form-select" name="lot_id" id="{{ id }}" required>
+  {% if lots|length != 1 %}
+  <option value="">Select a batch</option>
+  {% endif %}
+  {% for lot in lots %}
+  <option value="{{ lot.id }}" data-returnable="{{ lot.quantity_received - lot.quantity_remaining }}" {{ 'selected' if lots|length == 1 }}>
+    {{ lot.location.path_name() }} &mdash; {{ lot.quantity_received - lot.quantity_remaining }} outstanding (of {{ lot.quantity_received }} taken)
+    {% if lot.unit_price is not none %}@ {{ lot.unit_price|price(lot.currency) }}{% endif %}
+    (received {{ lot.received_at.strftime('%Y-%m-%d') }})
+  </option>
+  {% endfor %}
+</select>
+{% endmacro %}
+
+<div class="modal fade" id="inModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="{{ url_for('stock.stock_in', part_id=part.id) }}" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header"><h5 class="modal-title">Stock In</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="mb-2">{{ location_select('location_id') }}</div>
+        <div class="mb-2"><label class="form-label">Quantity</label><input type="number" min="1" class="form-control" name="quantity" required></div>
+        <div class="row g-2">
+          <div class="col-7">
+            <label class="form-label">Unit price (optional)</label>
+            <input type="number" step="0.0001" min="0" class="form-control" name="unit_price">
+          </div>
+          <div class="col-5">
+            <label class="form-label">Currency</label>
+            <select class="form-select" name="currency">
+              {% for c in currency_options %}
+              <option value="{{ c }}" {{ 'selected' if part.currency == c }}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="form-text mb-2">Updates the part's default price/currency.</div>
+        <div class="mb-2"><label class="form-label">Reference no. (optional)</label><input type="text" class="form-control" name="ref_no"></div>
+        <div class="mb-2"><label class="form-label">Note</label><input type="text" class="form-control" name="reason"></div>
+      </div>
+      <div class="modal-footer"><button type="submit" class="btn btn-success">Confirm stock in</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="outModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="{{ url_for('stock.stock_out', part_id=part.id) }}" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header"><h5 class="modal-title">Stock Out</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        {% if part.active_lots %}
+        <div class="mb-2">
+          <label class="form-label">Batch</label>
+          {{ lot_select('outLotSelect') }}
+          <div class="form-text">Pick the specific batch to take stock from — there's no automatic oldest-first selection.</div>
+        </div>
+        <div class="mb-2"><label class="form-label">Quantity</label><input type="number" min="1" class="form-control" name="quantity" id="outQuantityInput" required></div>
+        <div class="mb-2"><label class="form-label">Reference no. (optional)</label><input type="text" class="form-control" name="ref_no"></div>
+        <div class="mb-2"><label class="form-label">Note</label><input type="text" class="form-control" name="reason"></div>
+        {% else %}
+        <p class="text-secondary mb-0">No stock on hand — there's no batch to take from. Use Stock In to record some first.</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer"><button type="submit" class="btn btn-warning" {{ 'disabled' if not part.active_lots }}>Confirm stock out</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="cartModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="{{ url_for('cart.add') }}" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="part_id" value="{{ part.id }}">
+      <div class="modal-header"><h5 class="modal-title">Add to Cart</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        {% if part.active_lots %}
+        <div class="mb-2">
+          <label class="form-label">Batch</label>
+          {{ lot_select('cartLotSelect') }}
+          <div class="form-text">Same rule as Stock Out — you pick the exact batch, nothing is auto-selected.</div>
+        </div>
+        <div class="mb-2"><label class="form-label">Quantity</label><input type="number" min="1" class="form-control" name="quantity" id="cartQuantityInput" value="1" required></div>
+        {% else %}
+        <p class="text-secondary mb-0">No stock on hand — there's no batch to add to the cart.</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer"><button type="submit" class="btn btn-primary" {{ 'disabled' if not part.active_lots }}><i class="bi bi-cart-plus"></i> Add to cart</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="returnModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="{{ url_for('stock.stock_return', part_id=part.id) }}" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header"><h5 class="modal-title">Return Stock</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        {% if part.returnable_lots %}
+        <div class="mb-2">
+          <label class="form-label">Batch</label>
+          {{ return_lot_select('returnLotSelect') }}
+          <div class="form-text">Puts stock back into the exact batch it came from — you can return up to however much is currently outstanding for that batch.</div>
+        </div>
+        <div class="mb-2"><label class="form-label">Quantity</label><input type="number" min="1" class="form-control" name="quantity" id="returnQuantityInput" required></div>
+        <div class="mb-2"><label class="form-label">Note</label><input type="text" class="form-control" name="reason" placeholder="e.g. took out more than needed"></div>
+        {% else %}
+        <p class="text-secondary mb-0">Nothing outstanding to return — no batch currently has stock taken out of it.</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-primary" {{ 'disabled' if not part.returnable_lots }}>Confirm return</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="moveModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="{{ url_for('stock.stock_move', part_id=part.id) }}" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header"><h5 class="modal-title">Move Stock</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        {% if part.active_lots %}
+        <div class="mb-2">
+          <label class="form-label">Source batch</label>
+          {{ lot_select('moveLotSelect') }}
+        </div>
+        <div class="mb-2"><label class="form-label">Destination location</label>{{ location_select('to_location_id') }}</div>
+        <div class="mb-2"><label class="form-label">Quantity</label><input type="number" min="1" class="form-control" name="quantity" id="moveQuantityInput" required></div>
+        <div class="mb-2"><label class="form-label">Note</label><input type="text" class="form-control" name="reason"></div>
+        {% else %}
+        <p class="text-secondary mb-0">No stock on hand — there's no batch to move.</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer"><button type="submit" class="btn btn-primary" {{ 'disabled' if not part.active_lots }}>Confirm move</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="adjustModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="{{ url_for('stock.stock_adjust', part_id=part.id) }}" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header"><h5 class="modal-title">Adjust Stock</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        {% if part.active_lots %}
+        <div class="mb-2">
+          <label class="form-label">Batch</label>
+          {{ lot_select('adjustLotSelect') }}
+          <div class="form-text">Corrects one batch's recorded quantity. For stock with no existing batch, use Stock In instead (price is optional there).</div>
+        </div>
+        <div class="mb-2"><label class="form-label">Actual quantity</label><input type="number" min="0" class="form-control" name="new_quantity" id="adjustQuantityInput" required></div>
+        <div class="mb-2"><label class="form-label">Note</label><input type="text" class="form-control" name="reason" placeholder="Stock count adjustment"></div>
+        {% else %}
+        <p class="text-secondary mb-0">No stock on hand — there's no batch to adjust. Use Stock In to record some first.</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer"><button type="submit" class="btn btn-primary" {{ 'disabled' if not part.active_lots }}>Confirm adjustment</button></div>
+    </form>
+  </div>
+</div>
+
+{% for lot in part.active_lots %}
+<div class="modal fade" id="editLotPriceModal{{ lot.id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="{{ url_for('stock.edit_lot_price', part_id=part.id, lot_id=lot.id) }}" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header"><h5 class="modal-title">Correct Batch Price</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="form-text mb-2">
+          {{ lot.location.path_name() }}, received {{ lot.received_at.strftime('%Y-%m-%d') }}. This corrects a data-entry
+          mistake on this specific batch — it does not create a new stock movement.
+        </div>
+        <div class="row g-2">
+          <div class="col-7">
+            <label class="form-label">Unit price</label>
+            <input type="number" step="0.0001" min="0" class="form-control" name="unit_price"
+                   value="{{ lot.unit_price if lot.unit_price is not none else '' }}" required>
+          </div>
+          <div class="col-5">
+            <label class="form-label">Currency</label>
+            <select class="form-select" name="currency" required>
+              {% for c in currency_options %}
+              <option value="{{ c }}" {{ 'selected' if lot.currency == c }}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="submit" class="btn btn-primary">Save correction</button></div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var btn = document.getElementById('txToggleBtn');
+  if (!btn) return;
+  var expanded = false;
+  btn.addEventListener('click', function () {
+    expanded = !expanded;
+    document.querySelectorAll('#txTable .tx-extra').forEach(function (row) {
+      row.classList.toggle('d-none', !expanded);
+    });
+    btn.querySelector('i').className = expanded ? 'bi bi-chevron-up' : 'bi bi-chevron-down';
+    btn.title = expanded ? 'Show less' : 'Show all (up to 20)';
+  });
+})();
+
+(function () {
+  var wrap = document.getElementById('photoHeroWrap');
+  var thumbs = document.getElementById('photoThumbs');
+  if (!wrap) return;
+  var heroImg = document.getElementById('photoHeroImg');
+  var heroLink = document.getElementById('photoHeroLink');
+  var prevBtn = document.getElementById('photoPrevBtn');
+  var nextBtn = document.getElementById('photoNextBtn');
+  var thumbEls = thumbs ? Array.prototype.slice.call(thumbs.querySelectorAll('.photo-thumb-sm')) : [];
+  var index = 0;
+
+  function show(i) {
+    if (!thumbEls.length) return;
+    index = (i + thumbEls.length) % thumbEls.length;
+    var t = thumbEls[index];
+    heroImg.src = t.dataset.thumb;
+    heroLink.href = t.dataset.full;
+    thumbEls.forEach(function (el) { el.classList.remove('active'); });
+    t.classList.add('active');
+    t.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  }
+
+  if (prevBtn) prevBtn.addEventListener('click', function () { show(index - 1); });
+  if (nextBtn) nextBtn.addEventListener('click', function () { show(index + 1); });
+  thumbEls.forEach(function (el, i) {
+    el.addEventListener('click', function () { show(i); });
+  });
+})();
+
+(function () {
+  // Stock Out / Move / Return: cap the quantity at the selected batch's
+  // remaining (or, for Return, outstanding) amount.
+  function capAtRemaining(selectId, inputId, datasetKey) {
+    var lotSelect = document.getElementById(selectId);
+    var qtyInput = document.getElementById(inputId);
+    if (!lotSelect || !qtyInput) return;
+    function update() {
+      var opt = lotSelect.options[lotSelect.selectedIndex];
+      var limit = opt ? opt.dataset[datasetKey || 'remaining'] : null;
+      if (limit) {
+        qtyInput.max = limit;
+        qtyInput.placeholder = 'up to ' + limit;
+      } else {
+        qtyInput.removeAttribute('max');
+        qtyInput.placeholder = '';
+      }
+    }
+    lotSelect.addEventListener('change', update);
+    update(); // e.g. a single batch is pre-selected with no change event fired
+  }
+
+  // Adjust: pre-fill with the batch's current recorded quantity as a
+  // starting point — the whole point is to be able to correct it up or down.
+  function prefillCurrent(selectId, inputId) {
+    var lotSelect = document.getElementById(selectId);
+    var qtyInput = document.getElementById(inputId);
+    if (!lotSelect || !qtyInput) return;
+    function update() {
+      var opt = lotSelect.options[lotSelect.selectedIndex];
+      var remaining = opt ? opt.dataset.remaining : null;
+      qtyInput.value = remaining || '';
+    }
+    lotSelect.addEventListener('change', update);
+    update(); // e.g. a single batch is pre-selected with no change event fired
+  }
+
+  capAtRemaining('outLotSelect', 'outQuantityInput');
+  capAtRemaining('cartLotSelect', 'cartQuantityInput');
+  capAtRemaining('moveLotSelect', 'moveQuantityInput');
+  capAtRemaining('returnLotSelect', 'returnQuantityInput', 'returnable');
+  prefillCurrent('adjustLotSelect', 'adjustQuantityInput');
+})();
+</script>
+{% endblock %}

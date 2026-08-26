@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% block title %}Bulk Edit Parts - Bindex{% endblock %}
+
+{% macro clearable_field(name, label, value, input_attrs='type="text"') %}
+<label class="form-label">{{ label }}</label>
+<div class="input-group">
+  <input {{ input_attrs|safe }} class="form-control" name="{{ name }}" value="{{ value if value is not none else '' }}"
+         placeholder="{{ '' if value is not none else '(varies — leave blank to keep as-is)' }}">
+  <div class="input-group-text">
+    <input class="form-check-input mt-0" type="checkbox" name="{{ name }}_clear" value="1" id="{{ name }}Clear">
+    <label class="form-check-label ms-1" for="{{ name }}Clear">Clear</label>
+  </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<h4 class="mb-1">Bulk edit {{ parts|length }} part(s)</h4>
+<p class="text-secondary small mb-3">
+  {% for p in parts %}{{ p.mpn }}{% if not loop.last %}, {% endif %}{% endfor %}
+</p>
+<div class="alert alert-info small">
+  Fields where every selected part already shares the same value are pre-filled. Fields that differ are left blank
+  (or set to "No change") — leave them as-is to keep each part's own existing value, or fill one in to apply it to
+  <strong>all {{ parts|length }} selected parts</strong>. To wipe a field on all of them instead, check its
+  <strong>Clear</strong> box (an empty text box on its own is treated as "don't touch this field", not "erase it").
+</div>
+
+<form method="post" action="{{ url_for('parts.bulk_edit_apply') }}" class="card">
+  <div class="card-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for p in parts %}
+    <input type="hidden" name="part_ids" value="{{ p.id }}">
+    {% endfor %}
+    <div class="row g-3">
+      <div class="col-md-4">
+        {{ clearable_field('manufacturer', 'Manufacturer', common.manufacturer) }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Category</label>
+        <select class="form-select" name="category_id">
+          <option value="__nochange__" {{ 'selected' if common.category_id is none }}>No change</option>
+          <option value="">Uncategorized</option>
+          {% for node, depth in category_options %}
+          <option value="{{ node.id }}" {{ 'selected' if common.category_id == node.id }}>
+            {{ '  ' * depth }}{{ node.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        {{ clearable_field('package', 'Package', common.package) }}
+      </div>
+      <div class="col-md-4">
+        {{ clearable_field('marking', 'Marking', common.marking) }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Manual reference price <span class="text-secondary small">(both fields needed to apply)</span></label>
+        <div class="input-group">
+          <input type="number" step="0.0001" class="form-control" name="default_unit_price"
+                 value="{{ common.default_unit_price if common.default_unit_price is not none else '' }}"
+                 placeholder="{{ '' if common.default_unit_price is not none else '(varies)' }}">
+          <select class="form-select" name="currency" style="max-width: 130px;">
+            <option value="__nochange__" {{ 'selected' if common.currency is none }}>No change</option>
+            {% for c in currency_options %}
+            <option value="{{ c }}" {{ 'selected' if common.currency == c }}>{{ c }}</option>
+            {% endfor %}
+          </select>
+          <div class="input-group-text">
+            <input class="form-check-input mt-0" type="checkbox" name="default_unit_price_clear" value="1" id="priceClear">
+            <label class="form-check-label ms-1" for="priceClear">Clear</label>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        {{ clearable_field('min_stock_alert', 'Minimum stock alert', common.min_stock_alert, input_attrs='type="number" min="0"') }}
+      </div>
+      <div class="col-12">
+        {{ clearable_field('description', 'Description', common.description) }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Suspect counterfeit / unverified authenticity</label>
+        <select class="form-select" name="is_suspect_fake">
+          <option value="__nochange__" {{ 'selected' if common.is_suspect_fake is none }}>No change</option>
+          <option value="1" {{ 'selected' if common.is_suspect_fake == True }}>Yes</option>
+          <option value="0" {{ 'selected' if common.is_suspect_fake == False }}>No</option>
+        </select>
+      </div>
+    </div>
+
+    {% if attr_defs %}
+    <hr>
+    <p class="text-secondary small mb-2">Attributes common to all {{ parts|length }} selected parts' categories (an attribute only some of them have isn't shown here — edit those individually).</p>
+    <div class="row g-3">
+      {% for ad in attr_defs %}
+      <div class="col-md-4">
+        {% if ad.data_type == 'enum' and ad.enum_options %}
+        <label class="form-label">{{ ad|attr_label }}</label>
+        <select class="form-select" name="attr_{{ ad.id }}">
+          <option value="__nochange__" {{ 'selected' if attr_common_values.get(ad.id) is none }}>No change</option>
+          <option value="" {{ 'selected' if attr_common_values.get(ad.id) == '' }}>-</option>
+          {% for opt in ad.enum_options.split(',') %}
+          <option value="{{ opt.strip() }}" {{ 'selected' if attr_common_values.get(ad.id) == opt.strip() }}>{{ opt.strip() }}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        {{ clearable_field('attr_' ~ ad.id, ad|attr_label, attr_common_values.get(ad.id), input_attrs='type="number" step="any"' if ad.data_type in ('number', 'engineering') else 'type="text"') }}
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  <div class="card-footer d-flex gap-2">
+    <button type="submit" class="btn btn-primary" onclick="return confirm('Apply these changes to all {{ parts|length }} selected parts?');">
+      Apply to {{ parts|length }} part(s)
+    </button>
+    <a href="{{ url_for('parts.index') }}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+
+<div class="card mt-3">
+  <div class="card-header">Link a shared document to all {{ parts|length }} part(s)</div>
+  <div class="card-body">
+    <p class="text-secondary small mb-2">
+      Attaches an existing document (e.g. a datasheet already uploaded for one part in this series) to every
+      selected part — separate from the fields above, this applies immediately on its own. To upload a brand new
+      document, do that from one part's own page first, then link it here to the rest.
+    </p>
+    <form method="post" action="{{ url_for('parts.bulk_attach_document') }}"
+          onsubmit="return confirm('Link the selected document to all {{ parts|length }} selected parts?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% for p in parts %}
+      <input type="hidden" name="part_ids" value="{{ p.id }}">
+      {% endfor %}
+      <div class="row g-2 align-items-start">
+        <div class="col-md-6">
+          <input type="text" class="form-control form-control-sm mb-2" id="bulkDocSearchInput" placeholder="Search existing document titles...">
+          <select class="form-select form-select-sm" name="document_id" id="bulkDocSelect" size="5"></select>
+        </div>
+        <div class="col-md-2"><button type="submit" class="btn btn-sm btn-outline-secondary">Link to all</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header">Give all {{ parts|length }} part(s) a shared photo</div>
+  <div class="card-body">
+    <p class="text-secondary small mb-2">
+      Whichever way you add it below, the photo is uploaded/downloaded once and linked to every selected part —
+      becomes a part's cover photo only if it doesn't already have one.
+    </p>
+    <ul class="nav nav-tabs nav-tabs-sm" id="bulkPhotoTabs">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#bulkPhotoExisting">Link existing</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#bulkPhotoUpload">Upload new</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#bulkPhotoLcsc">Fetch from LCSC</button></li>
+    </ul>
+    <div class="tab-content pt-2">
+      <div class="tab-pane fade show active" id="bulkPhotoExisting">
+        <form method="post" action="{{ url_for('parts.bulk_attach_photo') }}"
+              onsubmit="return confirm('Link the selected photo to all {{ parts|length }} selected parts?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% for p in parts %}
+          <input type="hidden" name="part_ids" value="{{ p.id }}">
+          {% endfor %}
+          <div class="row g-2 align-items-start">
+            <div class="col-md-6">
+              <input type="text" class="form-control form-control-sm mb-2" id="bulkPhotoSearchInput" placeholder="Search other parts' photos...">
+              <input type="hidden" name="photo_id" id="bulkPhotoId">
+              <div class="d-flex flex-wrap gap-2" id="bulkPhotoResults"></div>
+            </div>
+            <div class="col-md-2"><button type="submit" class="btn btn-sm btn-outline-secondary" id="bulkPhotoSubmitBtn" disabled>Link to all</button></div>
+          </div>
+        </form>
+      </div>
+      <div class="tab-pane fade" id="bulkPhotoUpload">
+        <form method="post" action="{{ url_for('parts.bulk_upload_photo') }}" enctype="multipart/form-data"
+              onsubmit="return confirm('Upload and link to all {{ parts|length }} selected parts?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% for p in parts %}
+          <input type="hidden" name="part_ids" value="{{ p.id }}">
+          {% endfor %}
+          <div class="row g-2 align-items-start">
+            <div class="col-md-6"><input type="file" class="form-control form-control-sm" name="photo" accept="image/*" multiple required></div>
+            <div class="col-md-2"><button type="submit" class="btn btn-sm btn-outline-secondary">Upload &amp; link</button></div>
+          </div>
+        </form>
+      </div>
+      <div class="tab-pane fade lcsc-picker" id="bulkPhotoLcsc" data-search-url="{{ url_for('parts.bulk_lcsc_search') }}">
+        <div class="input-group input-group-sm mb-2" style="max-width: 400px;">
+          <input type="text" class="form-control" data-lcsc="keyword" value="{{ parts[0].mpn }}" placeholder="MPN or keyword to search on LCSC">
+          <button type="button" class="btn btn-outline-secondary" data-lcsc="search">Search</button>
+        </div>
+        <div class="small mb-2" data-lcsc="result"></div>
+        <div class="d-flex flex-wrap gap-2 mb-2" data-lcsc="suggestions"></div>
+        <form method="post" action="{{ url_for('parts.bulk_lcsc_fetch') }}"
+              onsubmit="return confirm('Download and link to all {{ parts|length }} selected parts?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% for p in parts %}
+          <input type="hidden" name="part_ids" value="{{ p.id }}">
+          {% endfor %}
+          <div class="d-flex flex-wrap gap-2 mb-2" data-lcsc="choices"></div>
+          <button type="submit" class="btn btn-primary btn-sm d-none" data-lcsc="download">
+            <i class="bi bi-download"></i> Download &amp; link selected
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if linked_photos %}
+<div class="card mt-3">
+  <div class="card-header">Remove a shared photo from the selected part(s)</div>
+  <div class="card-body">
+    <p class="text-secondary small mb-2">
+      Photos already linked to at least one of the {{ parts|length }} selected part(s). Removing one only unlinks
+      it from the parts that have it — the photo itself is not deleted.
+    </p>
+    <div class="d-flex flex-wrap gap-3">
+      {% for photo, count in linked_photos %}
+      <form method="post" action="{{ url_for('parts.bulk_detach_photo') }}" class="text-center"
+            onsubmit="return confirm('Remove this photo from the {{ count }} selected part(s) that have it?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="photo_id" value="{{ photo.id }}">
+        {% for p in parts %}
+        <input type="hidden" name="part_ids" value="{{ p.id }}">
+        {% endfor %}
+        <img src="{{ url_for('parts.uploaded_file', rel_path=photo.thumbnail_path or photo.file_path) }}" class="photo-thumb lcsc-thumb" alt="">
+        <div class="small text-secondary">linked to {{ count }}/{{ parts|length }}</div>
+        <button type="submit" class="btn btn-sm btn-outline-danger mt-1"><i class="bi bi-x-lg"></i> Remove</button>
+      </form>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/lcsc-picker.js') }}?v={{ asset_version('js/lcsc-picker.js') }}"></script>
+<script>
+// Live search of existing document titles.
+(function () {
+  var input = document.getElementById('bulkDocSearchInput');
+  var select = document.getElementById('bulkDocSelect');
+  function search() {
+    fetch('{{ url_for("parts.search_documents") }}?q=' + encodeURIComponent(input.value))
+      .then(function (r) { return r.json(); })
+      .then(function (docs) {
+        select.innerHTML = '';
+        docs.forEach(function (d) {
+          var opt = document.createElement('option');
+          opt.value = d.id;
+          opt.textContent = '[' + d.doc_type + '] ' + d.title;
+          select.appendChild(opt);
+        });
+      });
+  }
+  input.addEventListener('input', search);
+  search();
+})();
+
+// Live search of other parts' photos; picking one arms the "Link to all"
+// button (unlike the single-part page, which submits on click).
+(function () {
+  var input = document.getElementById('bulkPhotoSearchInput');
+  var results = document.getElementById('bulkPhotoResults');
+  var hiddenId = document.getElementById('bulkPhotoId');
+  var submitBtn = document.getElementById('bulkPhotoSubmitBtn');
+
+  function search() {
+    fetch('{{ url_for("parts.search_photos") }}?q=' + encodeURIComponent(input.value))
+      .then(function (r) { return r.json(); })
+      .then(function (photos) {
+        results.innerHTML = '';
+        photos.forEach(function (p) {
+          var img = document.createElement('img');
+          img.src = p.thumbnail_url;
+          img.className = 'photo-thumb lcsc-thumb' + (String(p.id) === hiddenId.value ? ' active' : '');
+          img.title = p.parts;
+          img.addEventListener('click', function () {
+            hiddenId.value = p.id;
+            submitBtn.disabled = false;
+            Array.prototype.forEach.call(results.children, function (el) { el.classList.remove('active'); });
+            img.classList.add('active');
+          });
+          results.appendChild(img);
+        });
+      });
+  }
+  input.addEventListener('input', search);
+  search();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Log in - Bindex{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-sm-8 col-md-5 col-lg-4">
+    <div class="card mt-5 shadow-sm">
+      <div class="card-body p-4">
+        <div class="text-center mb-3">
+          <img src="{{ url_for('static', filename='img/favicon.svg') }}" alt="" width="64" height="64" class="mb-2">
+          <h4 class="card-title mb-0">Bindex</h4>
+        </div>
+        <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-3">
+            <label class="form-label">Username</label>
+            <input type="text" class="form-control" name="username" required autofocus>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input type="password" class="form-control" name="password" required>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Log in</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

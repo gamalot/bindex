@@ -1,0 +1,99 @@
+{# Floating document/image preview, shared by the Documents list, the Images
+   list and a part's own Documents card — all three previously carried their
+   own copy of this markup and the sizing logic below.
+
+   Include it once per page, then call openPreviewModal(url, title, kind)
+   with kind "pdf" or "image". Any button carrying .preview-btn plus
+   data-url / data-title / data-kind is wired up automatically; pages that
+   need something else on click (the Documents and Images lists can route to
+   a side panel instead) define window.onPreviewClick to take over. #}
+<div class="modal fade" id="previewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" id="previewModalDialog">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title text-truncate mb-0" id="previewModalTitle">Preview</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0 d-flex align-items-center justify-content-center bg-body-tertiary" id="previewModalBody">
+        <iframe id="previewModalFrame" class="d-none w-100 h-100 border-0" title="Document preview"></iframe>
+        <span class="crop-wrap d-none" id="previewModalImageWrap">
+          <img id="previewModalImage" style="max-width: 100%; max-height: 100%;" alt="">
+          <span class="crop-box d-none" id="previewModalCrop"></span>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Draws the stored crop rectangle over a previewed photo: the region the
+// thumbnail keeps stays lit, everything outside is dimmed (the dimming is
+// one big outward box-shadow, clipped by the wrapper's overflow:hidden).
+// Geometry is set in percentages of the natural image size, so it stays
+// correct at whatever size the image ends up rendered at.
+//
+// `crop` is "x0,y0,x1,y1" in original-image pixels, or empty when the
+// photo has no crop set — and is absent entirely for document previews.
+function applyCropOverlay(img, boxEl, crop) {
+  boxEl.classList.add('d-none');
+  if (!crop) return;
+  var n = crop.split(',').map(Number);
+  if (n.length !== 4 || n.some(isNaN)) return;
+  var w = img.naturalWidth, h = img.naturalHeight;
+  if (!w || !h) return;
+  boxEl.style.left = (n[0] / w * 100) + '%';
+  boxEl.style.top = (n[1] / h * 100) + '%';
+  boxEl.style.width = ((n[2] - n[0]) / w * 100) + '%';
+  boxEl.style.height = ((n[3] - n[1]) / h * 100) + '%';
+  boxEl.classList.remove('d-none');
+}
+
+function openPreviewModal(url, title, kind, crop) {
+  document.getElementById('previewModalTitle').textContent = title;
+  var dialog = document.getElementById('previewModalDialog');
+  var body = document.getElementById('previewModalBody');
+  var frame = document.getElementById('previewModalFrame');
+  var wrap = document.getElementById('previewModalImageWrap');
+  var img = document.getElementById('previewModalImage');
+  var cropBox = document.getElementById('previewModalCrop');
+  var maxW = window.innerWidth * 0.9;
+  var maxH = window.innerHeight * 0.85;
+
+  function sizeAndShow(w, h) {
+    dialog.style.width = w + 'px';
+    dialog.style.maxWidth = w + 'px';
+    body.style.height = h + 'px';
+    // Resolved lazily so this can run before bootstrap.bundle.js has loaded.
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('previewModal')).show();
+  }
+
+  if (kind === 'image') {
+    frame.classList.add('d-none');
+    frame.src = '';
+    // Size to the image's own aspect ratio, so a tall photo doesn't sit in
+    // a letterboxed wide dialog.
+    img.onload = function () {
+      var ratio = (img.naturalWidth && img.naturalHeight) ? img.naturalWidth / img.naturalHeight : 1;
+      var w = maxW, h = w / ratio;
+      if (h > maxH) { h = maxH; w = h * ratio; }
+      wrap.classList.remove('d-none');
+      applyCropOverlay(img, cropBox, crop);
+      sizeAndShow(w, h);
+    };
+    img.src = url;
+  } else {
+    wrap.classList.add('d-none');
+    img.src = '';
+    frame.classList.remove('d-none');
+    frame.src = url;
+    sizeAndShow(maxW, maxH);
+  }
+}
+
+document.querySelectorAll('.preview-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var handler = window.onPreviewClick || openPreviewModal;
+    handler(btn.dataset.url, btn.dataset.title, btn.dataset.kind, btn.dataset.crop, btn.dataset.ratio);
+  });
+});
+</script>

@@ -1,0 +1,128 @@
+{# Thumbnail re-crop dialog, shared by a part's Photos card and the Images
+   list — both previously carried their own copy of this modal and its
+   Cropper wiring.
+
+   Markup contract: a trigger with .recrop-btn plus data-photo-id,
+   data-full-url, data-suggestion-url and data-recrop-url. After a
+   successful save every element with data-photo-thumb="<photo id>" gets
+   its src refreshed, so the page reflects the new crop without a reload. #}
+<link href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" rel="stylesheet">
+<div class="modal fade" id="recropModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Adjust thumbnail crop</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-secondary small mb-2" id="recropHint"></p>
+        <div style="max-height: 60vh;">
+          <img id="recropImage" style="max-width: 100%;" src="" alt="">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="recropSaveBtn">Save crop</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
+<script>
+(function () {
+  var modalEl = document.getElementById('recropModal');
+  var img = document.getElementById('recropImage');
+  var hint = document.getElementById('recropHint');
+  var saveBtn = document.getElementById('recropSaveBtn');
+  var cropper = null;
+  var current = null;
+
+  var HINTS = {
+    saved: 'This is the crop you saved last time — drag/resize to change it, then save. Only the thumbnail changes; the full photo is untouched.',
+    suggested: 'The box is a rough auto-suggestion — drag/resize it to cover the component, then save. Only the thumbnail changes; the full photo is untouched.',
+  };
+  hint.textContent = HINTS.suggested;
+
+  document.querySelectorAll('.recrop-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      current = {
+        photoId: btn.dataset.photoId,
+        suggestionUrl: btn.dataset.suggestionUrl,
+        recropUrl: btn.dataset.recropUrl,
+      };
+      img.src = btn.dataset.fullUrl;
+      // Resolved lazily so this can run before bootstrap.bundle.js loads.
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    });
+  });
+
+  // Cropper needs the image laid out before it can measure it, so build it
+  // on shown (not show), then seed the box from the server's suggestion.
+  modalEl.addEventListener('shown.bs.modal', function () {
+    if (cropper) cropper.destroy();
+    cropper = new Cropper(img, {
+      viewMode: 1,
+      aspectRatio: 1,
+      autoCropArea: 1,
+      background: false,
+      ready: function () {
+        fetch(current.suggestionUrl)
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            hint.textContent = HINTS[data.source] || HINTS.suggested;
+            if (data.box) {
+              cropper.setData({
+                x: data.box[0],
+                y: data.box[1],
+                width: data.box[2] - data.box[0],
+                height: data.box[3] - data.box[1],
+              });
+            }
+          })
+          .catch(function () {});
+      },
+    });
+  });
+
+  modalEl.addEventListener('hidden.bs.modal', function () {
+    if (cropper) { cropper.destroy(); cropper = null; }
+    img.removeAttribute('src');
+  });
+
+  saveBtn.addEventListener('click', function () {
+    if (!cropper || !current) return;
+    var data = cropper.getData(true);
+    saveBtn.disabled = true;
+    fetch(current.recropUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': window.CSRF_TOKEN || '',
+      },
+      body: JSON.stringify({ x0: data.x, y0: data.y, x1: data.x + data.width, y1: data.y + data.height }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (result) {
+        saveBtn.disabled = false;
+        if (!result.ok) {
+          alert(result.error || 'Failed to save crop');
+          return;
+        }
+        document.querySelectorAll('[data-photo-thumb="' + current.photoId + '"]').forEach(function (el) {
+          el.src = result.thumbnail_url;
+        });
+        // Keep any preview button's crop overlay in step with what was just
+        // saved, so previewing right after cropping doesn't show the old box.
+        document.querySelectorAll('.preview-btn[data-photo-id="' + current.photoId + '"]').forEach(function (b) {
+          b.dataset.crop = result.crop_box || '';
+        });
+        bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+      })
+      .catch(function () {
+        saveBtn.disabled = false;
+        alert('Failed to save crop');
+      });
+  });
+})();
+</script>

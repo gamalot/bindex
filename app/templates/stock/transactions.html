@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Stock Log - Bindex{% endblock %}
+{% block content %}
+<h4 class="mb-3">Stock Log <span class="text-secondary small">({{ pagination.total }})</span></h4>
+
+{# The whole query reads as one control, matching the Images and Documents
+   filter bars — keyword, then the narrowing selects, then the action. #}
+<form method="get" class="mb-3">
+  <div class="input-group filter-bar">
+    <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="Search by MPN or marking...">
+    <select class="form-select" name="type" onchange="this.form.submit()">
+      <option value="">All movement types</option>
+      {% for t in tx_types %}
+      <option value="{{ t }}" {{ 'selected' if tx_type == t }}>{{ t|tx_type }}</option>
+      {% endfor %}
+    </select>
+    <select class="form-select" name="operator_id" onchange="this.form.submit()">
+      <option value="">All operators</option>
+      {% for u in operators %}
+      <option value="{{ u.id }}" {{ 'selected' if operator_id == u.id }}>{{ u.username }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-outline-secondary"><i class="bi bi-search"></i></button>
+    {% if q or tx_type or operator_id %}
+    <a href="{{ url_for('stock.transactions') }}" class="btn btn-outline-secondary">Clear</a>
+    {% endif %}
+  </div>
+</form>
+
+<div class="table-responsive">
+<table class="table table-sm table-hover">
+  <thead><tr><th>Time</th><th>Part</th><th>Type</th><th>Location</th><th>Qty</th><th>Balance</th><th>Operator</th><th>Note</th></tr></thead>
+  <tbody>
+    {% for t in pagination.items %}
+    <tr>
+      <td class="text-nowrap">{{ t.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td><a href="{{ url_for('parts.detail', part_id=t.part_id) }}">{{ t.part.mpn }}</a></td>
+      <td>{{ t.type|tx_type }}</td>
+      <td>{{ t.location.path_name() }}</td>
+      <td class="{{ 'text-success' if t.quantity_delta > 0 else 'text-danger' }}">{{ '+%d'|format(t.quantity_delta) if t.quantity_delta > 0 else t.quantity_delta }}</td>
+      <td>{{ t.balance_after|qty }}</td>
+      <td>{{ t.operator.username if t.operator else '-' }}</td>
+      <td>{{ t.reason or '-' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="text-center text-secondary py-4">No records{{ ' matching that filter' if q or tx_type or operator_id }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+  <div>
+    {% if pagination.pages > 1 %}
+    <nav>
+      <ul class="pagination mb-0">
+        {% for pnum in pagination.iter_pages() %}
+          {% if pnum %}
+          <li class="page-item {{ 'active' if pnum == pagination.page }}">
+            <a class="page-link" href="{{ url_for('stock.transactions', page=pnum, q=q, type=tx_type, operator_id=operator_id, page_size=page_size) }}">{{ pnum }}</a>
+          </li>
+          {% else %}
+          <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+    </nav>
+    {% endif %}
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <label for="pageSizeSelect" class="text-secondary small mb-0 text-nowrap">Per page</label>
+    <select id="pageSizeSelect" class="form-select form-select-sm" style="width: 5.5em;">
+      {% for n in page_size_options %}
+      <option value="{{ n }}" {{ 'selected' if page_size == n }}>{{ n }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Page size is a per-view URL param here rather than a stored preference —
+// the stock log is a page you dip into with a question, not one you live on.
+document.getElementById('pageSizeSelect').addEventListener('change', function () {
+  var params = new URLSearchParams(window.location.search);
+  params.set('page_size', this.value);
+  params.set('page', '1');
+  window.location.search = params.toString();
+});
+</script>
+{% endblock %}

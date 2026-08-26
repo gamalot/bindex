@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Users - Bindex{% endblock %}
+{% block content %}
+<h4 class="mb-3">Users</h4>
+
+<div class="table-responsive mb-4">
+<table class="table align-middle">
+  <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th style="width: 340px;"></th></tr></thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}{% if u.id == current_user.id %}<span class="text-secondary small ms-1">(me)</span>{% endif %}</td>
+      <td>{{ u.email or '-' }}</td>
+      <td>{{ 'Admin' if u.role == 'admin' else 'User' }}</td>
+      <td>{{ 'Active' if u.is_active else 'Disabled' }}</td>
+      <td>{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '-' }}</td>
+      <td>
+        <div class="d-flex gap-1 flex-wrap">
+          <form method="post" action="{{ url_for('admin.update_user', user_id=u.id) }}" class="d-flex gap-1 align-items-center">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select class="form-select form-select-sm" name="role" style="width:100px;">
+              <option value="user" {{ 'selected' if u.role == 'user' }}>User</option>
+              <option value="admin" {{ 'selected' if u.role == 'admin' }}>Admin</option>
+            </select>
+            <input type="email" class="form-control form-control-sm" name="email" value="{{ u.email or '' }}" placeholder="Email" style="width:140px;">
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input" type="checkbox" name="is_active" {{ 'checked' if u.is_active }}>
+              <label class="form-check-label small">Active</label>
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary">Save</button>
+          </form>
+          <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#pwdModal" data-user-id="{{ u.id }}" data-username="{{ u.username }}">Reset password</button>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div class="card">
+  <div class="card-header">Add User</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('admin.create_user') }}" class="row g-2 align-items-end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col-md-3"><label class="form-label">Username</label><input type="text" class="form-control" name="username" required></div>
+      <div class="col-md-3"><label class="form-label">Initial password</label><input type="password" class="form-control" name="password" required></div>
+      <div class="col-md-2"><label class="form-label">Role</label>
+        <select class="form-select" name="role">
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div class="col-md-3"><label class="form-label">Email (optional)</label><input type="email" class="form-control" name="email"></div>
+      <div class="col-md-1"><button type="submit" class="btn btn-primary w-100">Create</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="pwdModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="" id="pwdForm" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header"><h5 class="modal-title">Reset password: <span id="pwdUsername"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label">New password</label>
+        <input type="password" class="form-control" name="password" required>
+      </div>
+      <div class="modal-footer"><button type="submit" class="btn btn-primary">Reset</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('pwdModal').addEventListener('show.bs.modal', function (e) {
+  var btn = e.relatedTarget;
+  document.getElementById('pwdForm').action = '/admin/users/' + btn.dataset.userId + '/reset_password';
+  document.getElementById('pwdUsername').textContent = btn.dataset.username;
+});
+</script>
+{% endblock %}

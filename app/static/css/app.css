@@ -1,0 +1,458 @@
+.theme-btn.active {
+  background-color: var(--bs-secondary-bg);
+}
+
+.tree {
+  list-style: none;
+  padding-left: 1.25rem;
+  margin-bottom: 0;
+}
+
+.tree > li:first-child {
+  padding-left: 0;
+}
+
+.tree-root {
+  padding-left: 0;
+}
+
+.tree-node {
+  border: 1px solid transparent;
+  border-radius: .375rem;
+  padding: .25rem .5rem;
+  margin-bottom: .15rem;
+  cursor: grab;
+  background-color: var(--bs-body-bg);
+}
+
+.tree-node:hover {
+  background-color: var(--bs-tertiary-bg);
+}
+
+.tree-node.sortable-ghost {
+  opacity: .4;
+}
+
+.tree-children {
+  min-height: 6px;
+}
+
+.tree-toggle,
+.tree-toggle-spacer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+}
+
+.tree-toggle {
+  text-decoration: none;
+  color: var(--bs-secondary-color);
+}
+
+.tree-toggle:hover {
+  color: var(--bs-body-color);
+}
+
+/* Unit price column: amount and currency act as two aligned sub-columns
+   inside a single cell (no visible divider between them) */
+.price-split {
+  display: grid;
+  grid-template-columns: 1.5em 1fr auto;
+  align-items: baseline;
+}
+
+.price-amount {
+  text-align: right;
+}
+
+.price-currency {
+  text-align: left;
+  padding-left: 0.4em;
+  color: var(--bs-secondary-color);
+}
+
+/* Fixed-width slot on the left so its presence/absence never shifts the
+   amount's alignment between rows. Plain muted text, no badge pill. */
+.batch-badge {
+  text-align: left;
+  font-size: 0.75em;
+  font-weight: 400;
+  color: var(--bs-secondary-color);
+  opacity: 0.75;
+}
+
+/* Unit price column: a faint currency-coded tint */
+.price-cell.price-usd {
+  background-color: rgba(var(--bs-success-rgb), 0.12);
+}
+
+.price-cell.price-cny {
+  background-color: rgba(var(--bs-danger-rgb), 0.12);
+}
+
+.price-cell.price-aud {
+  background-color: rgba(var(--bs-warning-rgb), 0.15);
+}
+
+.context-menu {
+  display: block !important;
+  position: fixed;
+  top: 0;
+  left: 0;
+  min-width: 180px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity .15s ease, transform .15s ease, visibility .15s;
+  z-index: 3000;
+}
+
+.context-menu.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* Filter bar shared by the Images, Documents and Stock Log lists.
+   Sizing the keyword box rather than the whole group is what keeps the
+   three looking alike: the group's total width legitimately differs (Stock
+   Log carries two selects, Documents one, and its select disappears when
+   only one document kind exists), and if the input is the flex-grow item
+   it inherits every one of those differences — it even changes width
+   within a single page as the conditional Clear button appears. */
+.filter-bar {
+  flex-wrap: nowrap;
+  max-width: 100%;
+}
+
+/* Neither grows nor shrinks, so the keyword box is the same width on all
+   three pages regardless of how much room the surrounding row happens to
+   leave: Stock Log gets a full-width row, while Images and Documents sit
+   in a col-lg-8 with the preview-style switch beside them. Letting it
+   flex meant those two rendered narrower. When the row really can't fit,
+   the switch wraps to the next line instead (see .filter-form). */
+.filter-bar > .form-control {
+  flex: 0 0 21rem;
+  max-width: 100%;
+}
+
+.filter-bar > .form-select {
+  flex: 0 0 auto;    /* sized by its own longest option, not by leftovers */
+  width: auto;
+}
+
+/* Keeps the filter form at its natural size in the header row it shares
+   with the preview-style switch — without this the form is what gives way
+   when space is tight, squeezing the keyword box. The row already wraps,
+   so the switch drops below instead. */
+.filter-form {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+/* Two-column split for the Images and Documents lists — 8/4 from lg up,
+   matching the col-lg-8 / col-lg-4 this replaced. A wider pane was tried
+   (7/5, and half each from xxl) on the reasoning that Panel mode implies
+   a big monitor, but it squeezed the list enough to wrap table cells.
+   Widths live here rather than as col-* classes so switching modes is a
+   single class toggle instead of the JS adding and removing a column
+   class per breakpoint. */
+@media (min-width: 992px) {
+  /* Width is whichever is smaller: 32% of the row — as wide as the pane
+     can usefully get before it starts squeezing the list — or the width
+     at which the current document's whole page still fits the viewport.
+
+     --preview-ratio is that document's own page height/width, set by the
+     preview script from the value read out of the PDF. It matters because
+     the collection is close to an even split: of 44 datasheets, 19 are US
+     Letter (1.294) and 21 are A4 (1.414), with a landscape one at 0.707.
+     A single fixed ratio either wastes width on half of them or clips the
+     other half. The fallback is Letter, used for images and for any PDF
+     whose page size couldn't be read. */
+  .preview-layout:not(.preview-hidden) > .preview-panel-col {
+    width: min(32%, calc((100vh - 12rem) / var(--preview-ratio, 1.294)));
+  }
+
+  /* Takes whatever the pane leaves, so the two can't drift apart. */
+  .preview-layout:not(.preview-hidden) > .preview-list-col {
+    flex: 1 1 0;
+    width: auto;
+  }
+}
+
+.preview-layout.preview-hidden > .preview-panel-col {
+  display: none;
+}
+
+/* Preview pane on the Images and Documents lists. Deliberately not a card:
+   sitting beside a plain table, the card's tinted header and rounded border
+   read as a different kind of surface. This mirrors the table instead — a
+   title row over a rule — using the table's own cell padding and the same
+   2px divider Bootstrap draws between thead and tbody, so the pane's title
+   and the column headers line up and share one horizontal line. */
+/* Fills the viewport instead of a fixed 75vh. A PDF page is 1:1.414, so at
+   the pane's width an A4 page needs more height than 75vh left it on every
+   common screen — and the shortfall grows with the display, since the pane
+   widens with the viewport while the page's required height widens with
+   it. Sticky, so it keeps that full height as the list scrolls past. */
+.preview-pane {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 2rem);
+}
+
+.preview-pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  /* Same padding and same 1px muted rule a table cell draws, so the pane
+     title and the column headers share one continuous line. */
+  padding: .5rem;
+  border-bottom: var(--bs-border-width) solid var(--bs-border-color);
+}
+
+/* The "open in new tab" affordance is a bare icon rather than a button:
+   a btn-sm is taller than a line of text, so it pushed the rule ~7px below
+   the table's when it appeared, breaking the alignment. Kept to the text's
+   own line-height, the row is the same height whether or not it shows. */
+.preview-pane-open {
+  line-height: 1.5;
+  padding: 0;
+  border: 0;
+  color: var(--bs-secondary-color);
+  text-decoration: none;
+}
+
+.preview-pane-open:hover,
+.preview-pane-open:focus-visible {
+  color: var(--bs-body-color);
+}
+
+.preview-pane-body {
+  flex: 1;
+  min-height: 0;   /* without this a flex child refuses to shrink below its content */
+  padding-top: .5rem;
+}
+
+/* Crop-region overlay on a previewed photo. The wrapper shrink-wraps the
+   rendered image (the img carries only max-width/max-height, so its box is
+   exactly the scaled image), which lets the box be positioned in plain
+   percentages. overflow:hidden clips the dimming shadow to the photo. */
+.crop-wrap {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  line-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.crop-box {
+  position: absolute;
+  border: 2px dashed rgba(255, 255, 255, .95);
+  outline: 1px solid rgba(0, 0, 0, .55); /* keeps the dashes readable on a white photo */
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, .5);
+  pointer-events: none;
+}
+
+.photo-thumb {
+  width: 110px;
+  height: 110px;
+  object-fit: cover;
+  border-radius: .375rem;
+  border: 1px solid var(--bs-border-color);
+}
+
+/* LCSC search-result thumbnails: clicking toggles a hidden checkbox to
+   select/deselect the image for download. */
+.lcsc-thumb {
+  opacity: .55;
+  cursor: pointer;
+  border-color: transparent;
+  border-width: 2px;
+}
+
+.lcsc-thumb.active {
+  opacity: 1;
+  border-color: var(--bs-primary);
+}
+
+/* Fuzzy-match candidate cards, shown when there's no exact LCSC match. */
+.lcsc-suggestion {
+  cursor: pointer;
+  width: 118px;
+  padding: .25rem;
+  border-radius: .375rem;
+  border: 2px solid transparent;
+}
+
+.lcsc-suggestion:hover {
+  background-color: var(--bs-tertiary-bg);
+}
+
+.lcsc-suggestion.selected {
+  border-color: var(--bs-primary);
+}
+
+.lcsc-suggestion .lcsc-thumb {
+  opacity: 1;
+  pointer-events: none;
+}
+
+/* Part detail page photo gallery: one large hero image, cropped (not
+   stretched) to a square, with hover-revealed prev/next arrows and a
+   scrollable thumbnail strip below (max 5 visible at once). */
+.photo-hero-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+  border-radius: .375rem;
+  overflow: hidden;
+  background-color: var(--bs-tertiary-bg);
+}
+
+.photo-hero {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.photo-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.25rem;
+  height: 2.25rem;
+  border: none;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, .35);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity .15s ease, background-color .15s ease;
+  cursor: pointer;
+}
+
+.photo-hero-wrap:hover .photo-nav {
+  opacity: 1;
+}
+
+/* Revealing them on hover hides them completely on a touch screen, where
+   there's no hover to give — so on those, show them outright. */
+@media (hover: none) {
+  .photo-nav {
+    opacity: 1;
+  }
+}
+
+.photo-nav:hover {
+  background-color: rgba(0, 0, 0, .6);
+}
+
+.photo-nav-prev {
+  left: .5rem;
+}
+
+.photo-nav-next {
+  right: .5rem;
+}
+
+.photo-thumbs {
+  display: flex;
+  align-items: flex-start;   /* don't stretch the thumbnails to the row */
+  gap: .4rem;
+  margin-top: .5rem;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+  overflow-x: auto;
+}
+
+/* Fixed pixel dimensions, on purpose. The width used to be a percentage
+   of the strip (a fifth of it), and Safari didn't resolve that percentage
+   on first layout: the thumbnails came out as tall slivers, and once the
+   height was derived from that width they stopped rendering at all until
+   something — clicking a carousel arrow — forced a repaint. A percentage
+   here buys nothing anyway; the strip already scrolls when there are more
+   photos than fit. */
+.photo-thumb-sm {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: .25rem;
+  border: 2px solid transparent;
+  opacity: .65;
+  cursor: pointer;
+  transition: opacity .1s ease, border-color .1s ease;
+}
+
+.photo-thumb-sm:hover {
+  opacity: 1;
+}
+
+.photo-thumb-sm.active {
+  opacity: 1;
+  border-color: var(--bs-primary);
+}
+
+.badge-fake {
+  background-color: var(--bs-danger);
+}
+
+/* Parametric attribute search filters (DigiKey-style faceted multi-selects):
+   uniform height regardless of how many values a facet has, muted until a
+   value is picked in that specific box. The checkbox next to the label is
+   a status indicator (auto-checks when something's selected) that doubles
+   as a one-click "clear this box" control. */
+.attr-filter-select {
+  color: var(--bs-secondary-color);
+}
+
+.attr-filter-box--active .attr-filter-select {
+  color: var(--bs-body-color);
+}
+
+.attr-active-toggle {
+  cursor: pointer;
+}
+
+/* Floating attribute list shown on hovering a parts-list MPN — positioned
+   in JS (see parts/index.html), styled here so it picks up the current
+   theme via Bootstrap's card component instead of a hardcoded background. */
+.attr-hover-box {
+  position: absolute;
+  z-index: 2000;
+  max-width: 520px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.attr-hover-box td:first-child {
+  white-space: nowrap;
+}
+
+.attr-hover-box .attr-hover-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.attr-hover-thumb {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+}

@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}Attribute Definitions - {{ node.name }}{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('categories.index') }}">&laquo; Back to Categories</a></p>
+<h4>Parametric attribute definitions for "{{ node.path_name() }}"</h4>
+<p class="text-secondary small">Define the spec parameters for parts in this category (e.g. a resistor's resistance/tolerance/power). These appear as fields on the part detail page and as combinable filters on the search page. Subcategories automatically inherit whatever is defined here — no need to redefine them lower down.</p>
+
+{% set effective = node.all_attribute_defs %}
+<div class="card mb-3">
+  <div class="card-header">Attributes for this category (own + inherited, drag to reorder)</div>
+  <div class="card-body">
+    <p class="text-secondary small">Drag any row — including ones inherited from a parent category — to set this category's own display order. This only affects "{{ node.name }}"; other categories that inherit the same attribute keep their own order.</p>
+    <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr><th style="width: 2em;"></th><th>Name</th><th>Unit</th><th>Type</th><th>Enum options</th><th>In search?</th><th>Hidden?</th><th>Defined on</th><th></th></tr>
+      </thead>
+      <tbody id="attrsBody">
+        {% for ad in effective %}
+        {% set hidden = ad.category_id != node.id and node.is_attr_hidden(ad) %}
+        <tr data-attr-id="{{ ad.id }}" class="{{ 'text-secondary' if hidden }}">
+          <td class="text-secondary attr-drag-handle" style="cursor: grab;"><i class="bi bi-grip-vertical"></i></td>
+          <td>{{ ad.name|attr_name }}{{ ' (hidden)' if hidden }}</td>
+          <td>{{ ad.unit or '-' }}</td>
+          <td>{{ {'text': 'Text', 'number': 'Number', 'enum': 'Enum', 'engineering': 'Engineering (SI prefix)'}.get(ad.data_type, ad.data_type) }}</td>
+          <td>{{ ad.enum_options or '-' }}</td>
+          <td>
+            {% if ad.category_id == node.id %}
+            <input type="checkbox" class="form-check-input attr-searchable-check" data-attr-id="{{ ad.id }}" {{ 'checked' if ad.searchable }}>
+            {% else %}
+            <input type="checkbox" class="form-check-input attr-searchable-override-check" data-attr-id="{{ ad.id }}" {{ 'checked' if node.is_attr_searchable(ad) }} {{ 'disabled' if hidden }}
+                   title="Overrides this for &quot;{{ node.name }}&quot; only — doesn't change the default on {{ ad.category.name }} or any other category that inherits it.">
+            {% endif %}
+          </td>
+          <td>
+            {% if ad.category_id != node.id %}
+            <input type="checkbox" class="form-check-input attr-hidden-override-check" data-attr-id="{{ ad.id }}" {{ 'checked' if hidden }}
+                   title="Hides this inherited attribute from &quot;{{ node.name }}&quot; and its parts only — doesn't touch {{ ad.category.name }} or any other category that inherits it. Existing values already entered for it aren't deleted.">
+            {% endif %}
+          </td>
+          <td class="{{ 'text-secondary' if ad.category_id != node.id }}">{{ node.name if ad.category_id == node.id else ad.category.name }}</td>
+          <td class="text-end">
+            {% if ad.category_id == node.id %}
+            <div class="btn-group btn-group-sm">
+              <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editAttrModal{{ ad.id }}"><i class="bi bi-pencil"></i></button>
+              <form method="post" action="{{ url_for('categories.delete_attribute', attr_id=ad.id) }}" onsubmit="return confirm('Delete this attribute? Any values already entered for it will be deleted too.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button>
+              </form>
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-secondary">No attributes defined yet</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+{% for ad in node.attribute_defs %}
+<div class="modal fade" id="editAttrModal{{ ad.id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="{{ url_for('categories.update_attribute', attr_id=ad.id) }}" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header"><h5 class="modal-title">Edit Attribute</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">Name</label>
+          <input type="text" class="form-control" name="name" required value="{{ ad.name }}">
+          <div class="form-text">Use a backslash for a subscript, e.g. <code>V\CEO</code> or <code>V\C\E\O</code> → V<sub>CEO</sub></div>
+        </div>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label">Unit</label>
+            <input type="text" class="form-control" name="unit" value="{{ ad.unit or '' }}">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Type</label>
+            <select class="form-select" name="data_type">
+              <option value="text" {{ 'selected' if ad.data_type == 'text' }}>Text</option>
+              <option value="number" {{ 'selected' if ad.data_type == 'number' }}>Number (plain, comma thousands separators)</option>
+              <option value="engineering" {{ 'selected' if ad.data_type == 'engineering' }}>Engineering (SI prefix: 750000 → 750k)</option>
+              <option value="enum" {{ 'selected' if ad.data_type == 'enum' }}>Enum</option>
+            </select>
+          </div>
+        </div>
+        <div class="mt-2">
+          <label class="form-label">Enum options (comma-separated, optional)</label>
+          <input type="text" class="form-control" name="enum_options" value="{{ ad.enum_options or '' }}" placeholder="e.g. X7R,C0G,X5R">
+        </div>
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" name="searchable" id="editSearchable{{ ad.id }}" {{ 'checked' if ad.searchable }}>
+          <label class="form-check-label" for="editSearchable{{ ad.id }}">Show as a filter on the parts search page</label>
+        </div>
+        <div class="form-text mt-2">Renaming or changing the type doesn't touch existing values already entered on parts — they stay linked to this attribute.</div>
+      </div>
+      <div class="modal-footer"><button type="submit" class="btn btn-primary">Save changes</button></div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+<div class="card">
+  <div class="card-header">Add attribute</div>
+  <div class="card-body">
+    <form method="post" class="row g-2 align-items-end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col-md-3">
+        <label class="form-label" title="Backslash = subscript, e.g. V\CEO → V(CEO)">Name</label>
+        <input type="text" class="form-control" name="name" required placeholder="e.g. Resistance">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Unit</label>
+        <input type="text" class="form-control" name="unit" placeholder="e.g. Ω">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Type</label>
+        <select class="form-select" name="data_type">
+          <option value="text">Text</option>
+          <option value="number">Number (plain, comma thousands separators)</option>
+          <option value="engineering">Engineering (SI prefix: 750000 → 750k)</option>
+          <option value="enum">Enum</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" title="Comma-separated, optional">Enum options</label>
+        <input type="text" class="form-control" name="enum_options" placeholder="e.g. X7R,C0G,X5R">
+      </div>
+      <div class="col-md-2">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="searchable" id="addSearchable" checked>
+          <label class="form-check-label" for="addSearchable">Show in search</label>
+        </div>
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-primary w-100">Add</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+(function () {
+  var body = document.getElementById('attrsBody');
+  if (!body || !body.querySelector('tr[data-attr-id]')) return;
+  Sortable.create(body, {
+    handle: '.attr-drag-handle',
+    animation: 150,
+    onEnd: function () {
+      var order = Array.prototype.map.call(
+        body.querySelectorAll('tr[data-attr-id]'),
+        function (tr) { return parseInt(tr.dataset.attrId, 10); }
+      );
+      fetch('{{ url_for("categories.reorder_attributes", cat_id=node.id) }}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': window.CSRF_TOKEN || '',
+        },
+        body: JSON.stringify({ order: order }),
+      }).catch(function () {});
+    },
+  });
+})();
+
+document.querySelectorAll('.attr-searchable-check').forEach(function (cb) {
+  cb.addEventListener('change', function () {
+    var attrId = cb.dataset.attrId;
+    fetch('/categories/attributes/' + attrId + '/searchable', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': window.CSRF_TOKEN || '',
+      },
+      body: JSON.stringify({ searchable: cb.checked }),
+    }).catch(function () {});
+  });
+});
+
+document.querySelectorAll('.attr-searchable-override-check').forEach(function (cb) {
+  cb.addEventListener('change', function () {
+    var attrId = cb.dataset.attrId;
+    fetch('/categories/{{ node.id }}/attributes/' + attrId + '/searchable_override', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': window.CSRF_TOKEN || '',
+      },
+      body: JSON.stringify({ searchable: cb.checked }),
+    }).catch(function () {});
+  });
+});
+
+document.querySelectorAll('.attr-hidden-override-check').forEach(function (cb) {
+  cb.addEventListener('change', function () {
+    var attrId = cb.dataset.attrId;
+    fetch('/categories/{{ node.id }}/attributes/' + attrId + '/hidden_override', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': window.CSRF_TOKEN || '',
+      },
+      body: JSON.stringify({ hidden: cb.checked }),
+    })
+      .then(function () { window.location.reload(); })
+      .catch(function () {});
+  });
+});
+</script>
+{% endblock %}

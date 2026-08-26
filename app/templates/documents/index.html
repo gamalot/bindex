@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+{% block title %}Documents - Bindex{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Documents <span class="text-secondary small">({{ total }})</span></h4>
+  {% if current_user.is_admin %}
+  <button type="button" id="bulkDeleteBtn" class="btn btn-outline-danger btn-sm" disabled>
+    <i class="bi bi-trash"></i> Delete selected (<span id="bulkDeleteCount">0</span>)
+  </button>
+  {% endif %}
+</div>
+{% if current_user.is_admin %}
+<form method="post" action="{{ url_for('documents.bulk_delete') }}" id="bulkDeleteForm" class="d-none"
+      onsubmit="return confirm('Delete the selected document(s)? Any parts they\'re linked to will lose that link. This cannot be undone.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endif %}
+
+<div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3">
+  <form method="get" class="mb-0 filter-form">
+    <div class="input-group filter-bar">
+      <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="Search by title...">
+      {# Only kinds that actually occur are listed — see documents.index #}
+      {% if type_options|length > 1 %}
+      <select class="form-select" name="doc_type" onchange="this.form.submit()">
+        <option value="">All types</option>
+        {% for t in type_options %}
+        <option value="{{ t }}" {{ 'selected' if doc_type == t }}>{{ doc_types[t] }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+      <button type="submit" class="btn btn-outline-secondary"><i class="bi bi-search"></i></button>
+      {% if q or doc_type %}<a href="{{ url_for('documents.index') }}" class="btn btn-outline-secondary">Clear</a>{% endif %}
+    </div>
+  </form>
+  <div>
+    <label class="text-secondary small mb-1 d-block">Preview style</label>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Preview mode">
+      <input type="radio" class="btn-check" name="previewModeRadio" id="previewModePanel" autocomplete="off" {{ 'checked' if preview_mode != 'modal' }}>
+      <label class="btn btn-outline-secondary" for="previewModePanel" title="Preview in the side panel"><i class="bi bi-layout-sidebar-inset-reverse"></i> Panel</label>
+      <input type="radio" class="btn-check" name="previewModeRadio" id="previewModeModal" autocomplete="off" {{ 'checked' if preview_mode == 'modal' }}>
+      <label class="btn btn-outline-secondary" for="previewModeModal" title="Preview in a floating window sized to fit your screen"><i class="bi bi-window-stack"></i> Floating</label>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 preview-layout {{ 'preview-hidden' if preview_mode == 'modal' }}" id="previewLayout">
+  <div class="col-12 preview-list-col" id="docListCol">
+
+    <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          {% if current_user.is_admin %}
+          <th style="width: 2.5em;"><input type="checkbox" class="form-check-input" id="selectAllCheckbox"></th>
+          {% endif %}
+          <th>Title</th>
+          <th>Type</th>
+          <th>Linked parts</th>
+          <th>Uploaded</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for doc in documents %}
+        {% set ext = doc.file_path.rsplit('.', 1)[-1].lower() if doc.file_path else '' %}
+        {% set preview_url = url_for('documents.file', doc_id=doc.id) if doc.file_path else none %}
+        {% set previewable = ext in ('pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'txt', 'md') %}
+        <tr>
+          {% if current_user.is_admin %}
+          <td><input type="checkbox" class="form-check-input doc-select-checkbox" value="{{ doc.id }}"></td>
+          {% endif %}
+          <td>
+            {% if doc.url %}<a href="{{ doc.url }}" target="_blank" rel="noopener">{{ doc.title }}</a>
+            {% elif doc.file_path %}<a href="{{ preview_url }}" target="_blank">{{ doc.title }}</a>
+            {% else %}{{ doc.title }}{% endif %}
+            {% set icon, kind = doc|doc_icon %}<i class="bi bi-{{ icon }} text-secondary ms-1" title="{{ kind }}"></i>
+          </td>
+          <td>{{ doc_types.get(doc.doc_type, doc.doc_type) }}</td>
+          <td>
+            {% if doc.parts %}
+            <span class="small">
+              {% for p in doc.parts[:4] %}<a href="{{ url_for('parts.detail', part_id=p.id) }}">{{ p.mpn }}</a>{{ ', ' if not loop.last }}{% endfor %}
+              {% if doc.parts|length > 4 %}<span class="text-secondary" title="{{ doc.parts[4:]|map(attribute='mpn')|join(', ') }}">+{{ doc.parts|length - 4 }} more</span>{% endif %}
+            </span>
+            {% else %}
+            <span class="text-secondary small">not linked to any part</span>
+            {% endif %}
+          </td>
+          <td class="text-nowrap">{{ doc.uploaded_at.strftime('%Y-%m-%d') if doc.uploaded_at else '-' }}</td>
+          <td class="text-end">
+            <div class="btn-group btn-group-sm">
+              {% if previewable %}
+              <button type="button" class="btn btn-outline-secondary preview-btn"
+                      data-url="{{ preview_url }}" data-title="{{ doc.title }}" data-kind="{{ 'image' if ext in ('png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp') else 'pdf' }}"
+                      {% if doc.page_ratio %}data-ratio="{{ doc.page_ratio }}"{% endif %}
+                      title="Preview"><i class="bi bi-eye"></i></button>
+              {% endif %}
+              <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#renameModal{{ doc.id }}"><i class="bi bi-pencil"></i></button>
+              {% if current_user.is_admin %}
+              <form method="post" action="{{ url_for('documents.delete', doc_id=doc.id) }}"
+                    onsubmit="return confirm('Delete &quot;{{ doc.title }}&quot;?{{ (' It is linked to ' ~ doc.parts|length ~ ' part(s), which will lose that link.') if doc.parts else '' }} This cannot be undone.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ 6 if current_user.is_admin else 5 }}" class="text-center text-secondary py-4">No documents{{ ' matching "' ~ q ~ '"' if q }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+      <div>
+        {% if total_pages > 1 %}
+        <nav>
+          <ul class="pagination mb-0">
+            {% for pnum in page_window(page, total_pages) %}
+            {% if pnum %}
+            <li class="page-item {{ 'active' if pnum == page }}">
+              <a class="page-link" href="{{ url_for('documents.index', q=q, doc_type=doc_type, page=pnum, page_size=page_size) }}">{{ pnum }}</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+            {% endif %}
+            {% endfor %}
+          </ul>
+        </nav>
+        {% endif %}
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <label for="pageSizeSelect" class="text-secondary small mb-0 text-nowrap">Per page</label>
+        <select id="pageSizeSelect" class="form-select form-select-sm" style="width: 5.5em;">
+          {% for n in page_size_options %}
+          <option value="{{ n }}" {{ 'selected' if page_size == n }}>{{ n }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col-12 preview-panel-col" id="docPreviewCol">
+    <div class="preview-pane">
+      <div class="preview-pane-head">
+        <span id="previewTitle" class="text-truncate">Preview</span>
+        <a id="previewOpenLink" href="#" target="_blank" rel="noopener" class="preview-pane-open d-none" title="Open in a new tab"><i class="bi bi-box-arrow-up-right"></i></a>
+      </div>
+      <div class="preview-pane-body">
+        <div id="previewEmpty" class="d-flex align-items-center justify-content-center h-100 text-secondary small text-center px-3">
+          Click <i class="bi bi-eye mx-1"></i> next to a PDF or image document to preview it here.
+        </div>
+        <iframe id="previewFrame" class="d-none w-100 h-100 border-0"></iframe>
+        <img id="previewImage" class="d-none w-100 h-100" style="object-fit: contain;" alt="">
+      </div>
+    </div>
+  </div>
+</div>
+
+{% include "_preview_modal.html" %}
+
+{% for doc in documents %}
+<div class="modal fade" id="renameModal{{ doc.id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="{{ url_for('documents.update', doc_id=doc.id) }}" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header"><h5 class="modal-title">Rename document</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">Title</label>
+          <input type="text" class="form-control" name="title" required value="{{ doc.title }}">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Type</label>
+          <select class="form-select" name="doc_type">
+            {% for key, label in doc_types.items() %}
+            <option value="{{ key }}" {{ 'selected' if doc.doc_type == key }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% if doc.url %}
+        <div class="mb-2">
+          <label class="form-label">Link</label>
+          <input type="url" class="form-control" name="url" value="{{ doc.url }}">
+        </div>
+        {% endif %}
+      </div>
+      <div class="modal-footer"><button type="submit" class="btn btn-primary">Save</button></div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+var docPreviewMode = {{ preview_mode|tojson }};
+
+// The viewer's own furniture is inside the iframe and can't be measured
+// from out here, so these two are the only estimates left: the toolbar
+// plus the page's top/bottom margins, and the side margins plus the
+// scrollbar that sit between the iframe's edge and the page's.
+var PDF_CHROME_PX = 100;
+var PAGE_INSET_PX = 48;
+var lastRatio = 1.294;
+
+// Fit the pane to exactly one page of the document being previewed.
+//
+// Width is whichever is smaller: the 32% cap, or the width whose page
+// height still fits on screen. Height is then pulled back to what that
+// page actually needs — without that second step the pane kept the full
+// window height whenever the cap was the binding constraint, and the
+// leftover space showed the top of the next page.
+function fitDocPane(ratio) {
+  var pane = document.querySelector('.preview-pane');
+  var head = pane && pane.querySelector('.preview-pane-head');
+  var col = document.getElementById('docPreviewCol');
+  var row = document.getElementById('previewLayout');
+  if (!pane || !head || !col || !row) return;
+  if (ratio) lastRatio = parseFloat(ratio) || lastRatio;
+
+  // Measure off the column, not the pane: the pane is sticky, so once it
+  // sticks its own top no longer reports where it naturally sits.
+  var top = col.getBoundingClientRect().top + window.scrollY;
+  var headH = head.offsetHeight;
+  var availBody = Math.max(240, window.innerHeight - top - 16 - headH);
+
+  var byHeight = (availBody - PDF_CHROME_PX) / lastRatio + PAGE_INSET_PX;
+  var width = Math.max(240, Math.min(row.clientWidth * 0.32, byHeight));
+  col.style.width = Math.round(width) + 'px';
+
+  // Deliberately 24px under what one page needs. The iframe is loaded
+  // with #view=Fit, so the viewer shrinks the page to whatever height it
+  // is given rather than cutting it off — which makes undershooting the
+  // safe direction: it costs a percent of scale, where overshooting
+  // leaves a strip of the next page showing.
+  var needBody = (width - PAGE_INSET_PX) * lastRatio + PDF_CHROME_PX - 24;
+  pane.style.height = Math.round(headH + Math.min(availBody, needBody)) + 'px';
+}
+
+window.addEventListener('resize', function () { fitDocPane(); });
+
+function showDocPreviewPanel(url, title, kind, ratio) {
+  fitDocPane(ratio);
+  document.getElementById('previewEmpty').classList.add('d-none');
+  document.getElementById('previewTitle').textContent = title;
+  var openLink = document.getElementById('previewOpenLink');
+  openLink.href = url;
+  openLink.classList.remove('d-none');
+  var frame = document.getElementById('previewFrame');
+  var img = document.getElementById('previewImage');
+  if (kind === 'image') {
+    frame.classList.add('d-none');
+    frame.src = '';
+    img.classList.remove('d-none');
+    img.src = url;
+  } else {
+    img.classList.add('d-none');
+    img.src = '';
+    frame.classList.remove('d-none');
+    // #view=Fit tells the built-in viewer to scale the whole page into
+    // the space it has, so the pane can never clip it.
+    frame.src = url + (kind === 'pdf' ? '#view=Fit' : '');
+  }
+}
+
+function showDocPreview(url, title, kind, crop, ratio) {
+  if (docPreviewMode === 'modal') {
+    openPreviewModal(url, title, kind);   // already sizes itself to the file
+  } else {
+    showDocPreviewPanel(url, title, kind, ratio);
+  }
+}
+
+// The shared partial wires .preview-btn; route it through the mode switch.
+window.onPreviewClick = showDocPreview;
+
+// Size the empty pane on load too, so it doesn't jump on the first preview.
+fitDocPane();
+
+function applyPreviewLayout(mode) {
+  // Column widths are CSS's job (see .preview-layout); this just records
+  // which mode the row is in.
+  document.getElementById('previewLayout')
+    .classList.toggle('preview-hidden', mode === 'modal');
+}
+
+function setPreviewMode(mode) {
+  docPreviewMode = mode;
+  applyPreviewLayout(mode);
+  fetch('{{ url_for("settings.quick_doc_preview_mode") }}', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': window.CSRF_TOKEN || '',
+    },
+    body: JSON.stringify({ mode: mode }),
+  }).catch(function () {});
+}
+
+document.getElementById('previewModePanel').addEventListener('change', function () {
+  if (this.checked) setPreviewMode('panel');
+});
+document.getElementById('previewModeModal').addEventListener('change', function () {
+  if (this.checked) setPreviewMode('modal');
+});
+
+document.getElementById('pageSizeSelect').addEventListener('change', function () {
+  var pageSize = this.value;
+  fetch('{{ url_for("settings.quick_doc_page_size") }}', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': window.CSRF_TOKEN || '',
+    },
+    body: JSON.stringify({ page_size: parseInt(pageSize, 10) }),
+  }).catch(function () {}).finally(function () {
+    var params = new URLSearchParams(window.location.search);
+    params.set('page_size', pageSize);
+    params.set('page', '1');
+    window.location.search = params.toString();
+  });
+});
+
+{% if current_user.is_admin %}
+(function () {
+  var selectAll = document.getElementById('selectAllCheckbox');
+  var rowChecks = Array.prototype.slice.call(document.querySelectorAll('.doc-select-checkbox'));
+  var bulkBtn = document.getElementById('bulkDeleteBtn');
+  var countSpan = document.getElementById('bulkDeleteCount');
+  var bulkForm = document.getElementById('bulkDeleteForm');
+
+  function updateState() {
+    var checked = rowChecks.filter(function (c) { return c.checked; });
+    countSpan.textContent = checked.length;
+    bulkBtn.disabled = checked.length === 0;
+    if (selectAll) {
+      selectAll.checked = checked.length > 0 && checked.length === rowChecks.length;
+      selectAll.indeterminate = checked.length > 0 && checked.length < rowChecks.length;
+    }
+  }
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      rowChecks.forEach(function (c) { c.checked = selectAll.checked; });
+      updateState();
+    });
+  }
+  rowChecks.forEach(function (c) { c.addEventListener('change', updateState); });
+  updateState();
+
+  bulkBtn.addEventListener('click', function () {
+    var checked = rowChecks.filter(function (c) { return c.checked; });
+    if (!checked.length) return;
+    bulkForm.querySelectorAll('input[name="doc_ids"]').forEach(function (el) { el.remove(); });
+    checked.forEach(function (c) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'doc_ids';
+      input.value = c.value;
+      bulkForm.appendChild(input);
+    });
+    bulkForm.submit();
+  });
+})();
+{% endif %}
+</script>
+{% endblock %}

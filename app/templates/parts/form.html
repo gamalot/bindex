@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Part' if part else 'New Part' }} - Bindex{% endblock %}
+{% block content %}
+<h4 class="mb-3">
+  {{ 'Edit part: ' ~ part.mpn if part else 'New Part' }}
+  {% if part %}
+  <a href="{{ search_url }}{{ part.mpn|urlencode }}" target="_blank" rel="noopener" class="text-secondary" title="Search &quot;{{ part.mpn }}&quot; online" style="font-size: 0.7em;"><i class="bi bi-search"></i></a>
+  {% endif %}
+</h4>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card">
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">MPN / Part Number *</label>
+          <input type="text" class="form-control" name="mpn" required value="{{ part.mpn if part else '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Manufacturer</label>
+          <input type="text" class="form-control" name="manufacturer" list="manufacturerOptions" value="{{ part.manufacturer if part else '' }}">
+          <datalist id="manufacturerOptions">
+            {% for m in manufacturer_options %}
+            <option value="{{ m }}">
+            {% endfor %}
+          </datalist>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Category</label>
+          <select class="form-select" name="category_id">
+            <option value="">Uncategorized</option>
+            {% for node, depth in category_options %}
+            <option value="{{ node.id }}" {{ 'selected' if part and part.category_id == node.id }}>
+              {{ '  ' * depth }}{{ node.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Package</label>
+          <input type="text" class="form-control" name="package" list="packageOptions" value="{{ part.package if part else '' }}">
+          <datalist id="packageOptions">
+            {% for p in package_options %}
+            <option value="{{ p }}">
+            {% endfor %}
+          </datalist>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Marking</label>
+          <input type="text" class="form-control" name="marking" value="{{ part.marking if part else '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Manual reference price <span class="text-secondary small">(used only until a purchase batch exists)</span></label>
+          <div class="input-group">
+            <input type="number" step="0.0001" class="form-control" name="default_unit_price" value="{{ part.default_unit_price if part and part.default_unit_price is not none else '' }}">
+            <select class="form-select" name="currency" style="max-width: 100px;">
+              {% for c in currency_options %}
+              <option value="{{ c }}" {{ 'selected' if (part.currency if part else default_currency) == c }}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="col-12">
+          <label class="form-label">Description</label>
+          <input type="text" class="form-control" name="description" value="{{ part.description if part else '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Minimum stock alert (optional)</label>
+          <input type="number" min="0" class="form-control" name="min_stock_alert" value="{{ part.min_stock_alert if part and part.min_stock_alert is not none else '' }}">
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="is_suspect_fake" id="fakeCheck" {{ 'checked' if part and part.is_suspect_fake }}>
+            <label class="form-check-label" for="fakeCheck">Suspect counterfeit / unverified authenticity</label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if part and part.category %}
+  <div class="card mt-3">
+    <div class="card-header">Parametric Attributes ({{ part.category.name }})</div>
+    <div class="card-body">
+      {% if attr_defs %}
+      <div class="row g-2">
+        {% for ad in attr_defs %}
+        <div class="col-md-4">
+          <label class="form-label">{{ ad|attr_label }}</label>
+          {% if ad.data_type == 'enum' and ad.enum_options %}
+          <select class="form-select" name="attr_{{ ad.id }}">
+            <option value="">-</option>
+            {% for opt in ad.enum_options.split(',') %}
+            <option value="{{ opt.strip() }}" {{ 'selected' if values_by_def.get(ad.id) and values_by_def[ad.id].value_text == opt.strip() }}>{{ opt.strip() }}</option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <input type="{{ 'number' if ad.data_type in ('number', 'engineering') else 'text' }}" step="any" class="form-control" name="attr_{{ ad.id }}"
+                 value="{{ values_by_def[ad.id].value_text if values_by_def.get(ad.id) else '' }}">
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-secondary mb-0">No attributes defined for this category yet. An admin can add some on the
+        <a href="{{ url_for('categories.attributes', cat_id=part.category_id) }}">category attribute page</a>.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="d-flex gap-2 mt-3">
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a href="{{ url_for('parts.detail', part_id=part.id) if part else url_for('parts.index') }}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+
+{% if part %}
+<div class="card mt-3">
+  <div class="card-header">Documents (can be shared across parts)</div>
+  <div class="card-body">
+    <ul class="list-group list-group-flush mb-3">
+      {% for doc in part.documents %}
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        <span>
+          <span class="text-secondary small me-1">{{ doc_types.get(doc.doc_type, doc.doc_type) }}</span>
+          {% if doc.url %}<a href="{{ doc.url }}" target="_blank" rel="noopener">{{ doc.title }}</a>
+          {% elif doc.file_path %}<a href="{{ url_for('documents.file', doc_id=doc.id) }}" target="_blank">{{ doc.title }}</a>
+          {% else %}{{ doc.title }}{% endif %}
+          {% set icon, kind = doc|doc_icon %}<i class="bi bi-{{ icon }} text-secondary ms-1" title="{{ kind }}"></i>
+          {% if doc.parts|length > 1 %}<span class="text-secondary small">(shared by {{ doc.parts|length }} parts)</span>{% endif %}
+        </span>
+        <form method="post" action="{{ url_for('parts.detach_document', part_id=part.id, doc_id=doc.id) }}" onsubmit="return confirm('Unlink this document? (The document itself will not be deleted.)');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-lg"></i></button>
+        </form>
+      </li>
+      {% else %}
+      <li class="list-group-item text-secondary">No documents yet</li>
+      {% endfor %}
+    </ul>
+
+    <ul class="nav nav-tabs nav-tabs-sm" id="docTabs">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#docNew">New document</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#docExisting">Link existing document</button></li>
+    </ul>
+    <div class="tab-content pt-2">
+      <div class="tab-pane fade show active" id="docNew">
+        <form method="post" action="{{ url_for('parts.attach_document', part_id=part.id) }}" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="mode" value="new">
+          <div class="row g-2">
+            <div class="col-md-3"><input type="text" class="form-control form-control-sm" name="title" placeholder="Title" required></div>
+            <div class="col-md-3">
+              <select class="form-select form-select-sm" name="doc_type">
+                {% for key, label in doc_types.items() %}
+                <option value="{{ key }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3"><input type="url" class="form-control form-control-sm" name="url" placeholder="External link (optional)"></div>
+            <div class="col-md-2"><input type="file" class="form-control form-control-sm" name="file"></div>
+            <div class="col-md-1"><button type="submit" class="btn btn-sm btn-outline-secondary w-100">Add</button></div>
+          </div>
+        </form>
+      </div>
+      <div class="tab-pane fade" id="docExisting">
+        <form method="post" action="{{ url_for('parts.attach_document', part_id=part.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="mode" value="existing">
+          <div class="row g-2 align-items-start">
+            <div class="col-md-6">
+              <input type="text" class="form-control form-control-sm mb-2" id="docSearchInput" placeholder="Search existing document titles...">
+              <select class="form-select form-select-sm" name="document_id" id="docSelect" size="5"></select>
+            </div>
+            <div class="col-md-2"><button type="submit" class="btn btn-sm btn-outline-secondary">Link</button></div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    Photos (can be shared across parts)
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#lcscModal"><i class="bi bi-search"></i> Search LCSC</button>
+      <label for="photoInput" class="btn btn-sm btn-outline-secondary mb-0"><i class="bi bi-upload"></i> Upload</label>
+    </div>
+    <form method="post" action="{{ url_for('parts.upload_photo', part_id=part.id) }}" enctype="multipart/form-data" id="photoForm" class="d-none">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="file" name="photo" accept="image/*" multiple id="photoInput">
+    </form>
+  </div>
+  <div class="card-body d-flex flex-wrap gap-2">
+    {% for link in part.photo_links|sort(attribute='is_primary', reverse=true) %}
+    {% set photo = link.photo %}
+    <div class="text-center">
+      <a href="{{ url_for('parts.uploaded_file', rel_path=photo.file_path) }}" target="_blank">
+        <img class="photo-thumb" data-photo-thumb="{{ photo.id }}" src="{{ url_for('parts.uploaded_file', rel_path=photo.thumbnail_path or photo.file_path) }}" alt="">
+      </a>
+      {% if photo.parts|length > 1 %}
+      <div class="small text-secondary" title="Shared with: {{ photo.parts|map(attribute='mpn')|join(', ') }}">shared by {{ photo.parts|length }} parts</div>
+      {% endif %}
+      <div class="btn-group btn-group-sm mt-1">
+        <button type="button" class="btn btn-outline-secondary recrop-btn" title="Adjust thumbnail crop"
+                data-photo-id="{{ photo.id }}"
+                data-full-url="{{ url_for('parts.uploaded_file', rel_path=photo.file_path) }}"
+                data-suggestion-url="{{ url_for('parts.photo_crop_suggestion', photo_id=photo.id) }}"
+                data-recrop-url="{{ url_for('parts.photo_recrop', photo_id=photo.id) }}">
+          <i class="bi bi-crop"></i>
+        </button>
+        <form method="post" action="{{ url_for('parts.set_primary_photo', part_id=part.id, photo_id=photo.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-outline-{{ 'warning' if link.is_primary else 'secondary' }}" title="Set as cover" {{ 'disabled' if link.is_primary }}>
+            <i class="bi bi-star{{ '-fill' if link.is_primary else '' }}"></i>
+          </button>
+        </form>
+        <form method="post" action="{{ url_for('parts.delete_photo', part_id=part.id, photo_id=photo.id) }}"
+              onsubmit="return confirm('Remove this photo from this part?{{ (' It is shared with ' ~ (photo.parts|length - 1) ~ ' other part(s), which will keep it.') if photo.parts|length > 1 else ' (The photo itself will not be deleted unless this was the only part using it.)' }}');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-outline-secondary" title="Remove from this part"><i class="bi bi-x-lg"></i></button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <p class="text-secondary mb-0">No photos yet</p>
+    {% endfor %}
+  </div>
+  <div class="card-body border-top pt-2">
+    <div class="row g-2 align-items-start">
+      <div class="col-md-6">
+        <input type="text" class="form-control form-control-sm mb-2" id="photoSearchInput" placeholder="Search other parts' photos to share...">
+        <div class="d-flex flex-wrap gap-2" id="photoSearchResults"></div>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('parts.attach_photo', part_id=part.id) }}" id="photoAttachForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="photo_id" id="photoAttachId">
+    </form>
+  </div>
+</div>
+<div class="modal fade" id="lcscModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Search LCSC for a product photo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body lcsc-picker" data-search-url="{{ url_for('parts.lcsc_search', part_id=part.id) }}">
+        <div class="input-group mb-3">
+          <input type="text" class="form-control" data-lcsc="keyword" value="{{ part.mpn }}" placeholder="MPN to search on LCSC">
+          <button type="button" class="btn btn-outline-secondary" data-lcsc="search">Search</button>
+        </div>
+        <div class="small mb-2" data-lcsc="result"></div>
+        <div class="d-flex flex-wrap gap-2 mb-2" data-lcsc="suggestions"></div>
+        <form method="post" action="{{ url_for('parts.lcsc_fetch', part_id=part.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="d-flex flex-wrap gap-2 mb-2" data-lcsc="choices"></div>
+          <button type="submit" class="btn btn-primary btn-sm d-none" data-lcsc="download">
+            <i class="bi bi-download"></i> Download selected
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if part %}
+{% include "_recrop_modal.html" %}
+<script src="{{ url_for('static', filename='js/lcsc-picker.js') }}?v={{ asset_version('js/lcsc-picker.js') }}"></script>
+<script>
+// Uploading is a plain file input styled as a button — pick files and the
+// hidden form posts itself.
+document.getElementById('photoInput').addEventListener('change', function () {
+  if (this.files.length) document.getElementById('photoForm').submit();
+});
+
+// Live search of other parts' photos; clicking one links it to this part.
+(function () {
+  var input = document.getElementById('photoSearchInput');
+  var results = document.getElementById('photoSearchResults');
+  var attachForm = document.getElementById('photoAttachForm');
+  var attachId = document.getElementById('photoAttachId');
+  if (!input) return;
+
+  function search() {
+    fetch('{{ url_for("parts.search_photos") }}?q=' + encodeURIComponent(input.value))
+      .then(function (r) { return r.json(); })
+      .then(function (photos) {
+        results.innerHTML = '';
+        photos.forEach(function (p) {
+          var img = document.createElement('img');
+          img.src = p.thumbnail_url;
+          img.className = 'photo-thumb lcsc-thumb';
+          img.title = p.parts;
+          img.addEventListener('click', function () {
+            attachId.value = p.id;
+            attachForm.submit();
+          });
+          results.appendChild(img);
+        });
+      });
+  }
+  input.addEventListener('input', search);
+  search();
+})();
+
+// Live search of existing documents for the "Link existing" tab.
+(function () {
+  var input = document.getElementById('docSearchInput');
+  var select = document.getElementById('docSelect');
+  if (!input) return;
+  function search() {
+    fetch('{{ url_for("parts.search_documents") }}?q=' + encodeURIComponent(input.value))
+      .then(function (r) { return r.json(); })
+      .then(function (docs) {
+        select.innerHTML = '';
+        docs.forEach(function (d) {
+          var opt = document.createElement('option');
+          opt.value = d.id;
+          opt.textContent = '[' + d.doc_type + '] ' + d.title;
+          select.appendChild(opt);
+        });
+      });
+  }
+  input.addEventListener('input', search);
+  search();
+})();
+</script>
+{% endif %}
+{% endblock %}

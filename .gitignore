@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+instance/
+.env
+*.deb
+
+# Personal data: the legacy Excel ledger this was imported from
+Stocks.xlsx

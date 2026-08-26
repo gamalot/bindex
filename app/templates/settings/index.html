@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Settings - Bindex{% endblock %}
+{% block content %}
+<h4 class="mb-3">Settings</h4>
+<div class="col-12 col-md-6">
+<form method="post" class="card">
+  <div class="card-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="mb-3">
+      <label class="form-label">Theme</label>
+      <select class="form-select" name="theme">
+        <option value="system" {{ 'selected' if setting.theme == 'system' }}>Follow system</option>
+        <option value="light" {{ 'selected' if setting.theme == 'light' }}>Light</option>
+        <option value="dark" {{ 'selected' if setting.theme == 'dark' }}>Dark</option>
+      </select>
+      <div class="form-text">You can also switch quickly using the buttons in the top-right of the navbar.</div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Parts list &mdash; items per page</label>
+      <input type="number" min="5" max="1000" class="form-control" name="page_size" value="{{ setting.page_size }}">
+      <div class="form-text">You can also change this quickly using the "Per page" dropdown at the bottom of the parts list.</div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Default currency for price-range search</label>
+      <select class="form-select" name="default_price_currency">
+        {% for c in currency_options %}
+        <option value="{{ c }}" {{ 'selected' if setting.default_price_currency == c }}>{{ c }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text">On the parts list, the unit-price min/max filter converts every part's price into this currency for comparison (using daily exchange rates), regardless of what currency it's actually priced in. You can still change it per-search on that page.</div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Default search engine</label>
+      <select class="form-select" name="default_search_engine">
+        {% for key, (label, url) in search_engines.items() %}
+        <option value="{{ key }}" {{ 'selected' if setting.default_search_engine == key }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text">Used by the search icon next to a part's MPN on its detail/edit page — opens a new tab searching that MPN.</div>
+    </div>
+    {% for prefix, label in [('doc', 'Documents'), ('img', 'Images')] %}
+    <div class="mb-3">
+      <label class="form-label">{{ label }} page</label>
+      <div class="row g-2">
+        <div class="col-6">
+          <select class="form-select" name="{{ prefix }}_page_size" aria-label="{{ label }} items per page">
+            {% for n in page_size_options %}
+            <option value="{{ n }}" {{ 'selected' if setting[prefix ~ '_page_size'] == n }}>{{ n }} per page</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6">
+          <select class="form-select" name="{{ prefix }}_preview_mode" aria-label="{{ label }} preview style">
+            <option value="panel" {{ 'selected' if setting[prefix ~ '_preview_mode'] != 'modal' }}>Preview in side panel</option>
+            <option value="modal" {{ 'selected' if setting[prefix ~ '_preview_mode'] == 'modal' }}>Preview in floating window</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-text">Both can also be changed inline on the {{ label }} page itself.</div>
+    </div>
+    {% endfor %}
+
+    <div class="mb-3">
+      <label class="form-label">Parts list columns</label>
+      <div class="form-text mb-2">MPN and Stock are always shown; pick which of the rest to display.</div>
+      <div class="row row-cols-2 row-cols-md-3 g-2">
+        {% set visible = setting.visible_columns %}
+        {% for key in list_columns %}
+        <div class="col">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="visible_columns" value="{{ key }}" id="col{{ key }}" {{ 'checked' if key in visible }}>
+            <label class="form-check-label" for="col{{ key }}">{{ list_column_labels[key] }}</label>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="card-footer">
+    <button type="submit" class="btn btn-primary">Save</button>
+  </div>
+</form>
+</div>
+{% endblock %}

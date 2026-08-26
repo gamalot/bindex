@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Cart - Bindex{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Stock-out cart</h4>
+  {% if items %}
+  <a href="{{ url_for('cart.print_list') }}" target="_blank" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-printer"></i> Print pick list
+  </a>
+  {% endif %}
+</div>
+
+{% if not items %}
+<p class="text-secondary">Your cart is empty. Add parts from the search list or a part's own page.</p>
+{% else %}
+<div class="table-responsive">
+<table class="table table-hover align-middle">
+  <thead>
+    <tr>
+      <th>MPN</th>
+      <th>Location</th>
+      <th>Marking</th>
+      <th class="text-end">Quantity</th>
+      <th class="text-end">Batch has</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    {% set short = item.quantity > item.lot.quantity_remaining %}
+    <tr class="{{ 'table-danger' if short }}">
+      <td><a href="{{ url_for('parts.detail', part_id=item.lot.part_id) }}">{{ item.lot.part.mpn }}</a></td>
+      <td>{{ item.lot.location.path_name() }}</td>
+      <td>{{ item.lot.part.marking or '-' }}</td>
+      <td class="text-end" style="width: 10em;">
+        <form method="post" action="{{ url_for('cart.update_item', item_id=item.id) }}" class="d-inline-flex gap-1 justify-content-end">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="number" min="0" max="{{ item.lot.quantity_remaining }}" class="form-control form-control-sm" style="width: 6em;" name="quantity" value="{{ item.quantity }}">
+          <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-check-lg"></i></button>
+        </form>
+      </td>
+      <td class="text-end">{{ item.lot.quantity_remaining|qty }}{% if short %} <i class="bi bi-exclamation-triangle-fill text-danger" title="Not enough left in this batch"></i>{% endif %}</td>
+      <td class="text-end">
+        <form method="post" action="{{ url_for('cart.remove_item', item_id=item.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div class="card mt-3">
+  <div class="card-body">
+    <form method="post" action="{{ url_for('cart.checkout') }}" onsubmit="return confirm('Stock out all {{ items|length }} item(s) in the cart? Only do this once you\'ve physically collected everything on the pick list.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="form-label">Purpose <span class="text-secondary small">(applied to every item's stock-out record)</span></label>
+      <div class="input-group">
+        <input type="text" class="form-control" name="reason" placeholder="e.g. Project X repair">
+        <button type="submit" class="btn btn-warning"><i class="bi bi-box-arrow-up"></i> Stock out all {{ items|length }} item(s)</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

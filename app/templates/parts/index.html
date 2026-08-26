@@ -1,0 +1,437 @@
+{% extends "base.html" %}
+{% block title %}Search Parts - Bindex{% endblock %}
+
+{% macro sort_th(field, label, extra_class='') %}
+{% set next_dir = 'asc' if not (sort_field == field and sort_dir == 'asc') else 'desc' %}
+<th class="{{ extra_class }}">
+  <a href="{{ url_for('parts.index', **dict(filters.to_dict(flat=False), sort=field ~ '_' ~ next_dir, page=1)) }}"
+     class="text-reset text-decoration-none d-inline-flex align-items-center gap-1">
+    {{ label }}
+    {% if sort_field == field %}
+    <i class="bi bi-caret-{{ 'up' if sort_dir == 'asc' else 'down' }}-fill small"></i>
+    {% endif %}
+  </a>
+</th>
+{% endmacro %}
+
+{% macro facet_box(param_name, label, options, selected_values, labels=none) %}
+{% set sel_count = selected_values|length %}
+<div class="col-6 col-md-3">
+  <div class="attr-filter-box {{ 'attr-filter-box--active' if sel_count }}">
+    <label class="form-label mb-1 d-flex align-items-center gap-2">
+      <input type="checkbox" class="form-check-input attr-active-toggle mt-0" {{ 'checked' if sel_count }}>
+      <span>{{ label }}</span>
+    </label>
+    <input type="text" class="form-control form-control-sm attr-search-input mb-1" placeholder="Search Filter">
+    <select class="form-select attr-filter-select" name="{{ param_name }}" multiple size="6">
+      {% for opt in options %}
+      <option value="{{ opt }}" {{ 'selected' if opt in selected_values }}>{{ labels[loop.index0] if labels else opt }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Search Parts</h4>
+  <div class="d-flex gap-2">
+    <button type="button" id="bulkEditBtn" class="btn btn-outline-secondary btn-sm" disabled>
+      <i class="bi bi-pencil-square"></i> Bulk edit (<span id="bulkSelectedCount">0</span>)
+    </button>
+    <button type="button" id="bulkCartBtn" class="btn btn-outline-secondary btn-sm" disabled>
+      <i class="bi bi-cart-plus"></i> Add to cart (<span id="bulkCartCount">0</span>)
+    </button>
+  </div>
+</div>
+<form method="post" action="{{ url_for('parts.bulk_edit') }}" id="bulkEditForm" class="d-none">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+<form method="post" action="{{ url_for('cart.bulk_add') }}" id="bulkCartForm" class="d-none">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+
+<form method="get" class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2">
+      <div class="col-12 col-md">
+        <label class="form-label" title="Searches MPN / marking / manufacturer / description">Keyword</label>
+        <div class="input-group">
+          <input type="text" class="form-control" name="q" value="{{ filters.get('q', '') }}" placeholder="e.g. LM358 or 358">
+          <div class="input-group-text">
+            <input class="form-check-input mt-0" type="checkbox" name="exact" value="1" id="exactCheck" {{ 'checked' if filters.get('exact') == '1' }}>
+            <label class="form-check-label ms-1" for="exactCheck">Exact</label>
+          </div>
+        </div>
+      </div>
+      <div class="col-auto d-flex align-items-end">
+        <div class="form-control d-inline-flex align-items-center w-auto">
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" name="in_stock" value="1" id="inStockCheck" {{ 'checked' if filters.get('in_stock') == '1' }}>
+            <label class="form-check-label" for="inStockCheck">In stock</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-2 mt-1">
+      <div class="col-6 col-md-4">
+        <label class="form-label">Category</label>
+        <div class="input-group">
+        <select class="form-select" name="category_id">
+          <option value="">All categories</option>
+          {% for node, depth in category_options %}
+          <option value="{{ node.id }}" {{ 'selected' if selected_category_id == node.id }}>
+            {{ '  ' * depth }}{{ node.name }}
+          </option>
+          {% endfor %}
+        </select>
+          <div class="input-group-text">
+            <input type="hidden" name="include_subcategories" id="includeSubHidden" value="{{ '1' if include_subcategories else '0' }}">
+            <input class="form-check-input mt-0" type="checkbox" id="includeSubCheck" {{ 'checked' if include_subcategories }}>
+            <label class="form-check-label ms-1" for="includeSubCheck">Incl. sub</label>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4">
+        <label class="form-label">Location</label>
+        <select class="form-select" name="location_id">
+          <option value="">All locations</option>
+          {% for node, depth in location_options %}
+          <option value="{{ node.id }}" {{ 'selected' if selected_location_id == node.id }}>
+            {{ '  ' * depth }}{{ node.code or node.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">Unit price (min)</label>
+        <input type="number" step="0.01" class="form-control" name="price_min" value="{{ filters.get('price_min', '') }}">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">Unit price (max)</label>
+        <input type="number" step="0.01" class="form-control" name="price_max" value="{{ filters.get('price_max', '') }}">
+      </div>
+    </div>
+
+    <div class="row g-2 mt-1">
+      {{ facet_box('manufacturer_values', 'Manufacturer', manufacturer_options, selected_manufacturer_values) }}
+      {{ facet_box('package_values', 'Package', package_options, selected_package_values) }}
+      {% for ad in attr_defs %}
+        {% set raws = [] %}
+        {% set labels = [] %}
+        {% for val, disp in attr_value_options.get(ad.id, []) %}
+          {% set _ = raws.append(val) %}
+          {% set _ = labels.append(disp) %}
+        {% endfor %}
+        {{ facet_box('attr_' ~ ad.id ~ '_values', ad|attr_label, raws, selected_attr_values.get(ad.id, []), labels) }}
+      {% endfor %}
+    </div>
+
+    <div class="mt-3">
+      <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i> Search</button>
+      <a href="{{ url_for('parts.index') }}" class="btn btn-outline-secondary">Reset</a>
+    </div>
+  </div>
+</form>
+
+<p class="text-secondary small">{{ total }} part(s) found</p>
+
+<div class="table-responsive">
+<table class="table table-hover align-middle">
+  <thead>
+    <tr>
+      <th style="width: 2.5em;"><input type="checkbox" class="form-check-input" id="selectAllCheckbox"></th>
+      {% if col_visible.thumbnail %}<th style="width: 3.5em;">Photo</th>{% endif %}
+      {{ sort_th('mpn', 'MPN') }}
+      {% if col_visible.location %}{{ sort_th('location', 'Location') }}{% endif %}
+      {% if col_visible.manufacturer %}{{ sort_th('manufacturer', 'Manufacturer') }}{% endif %}
+      {% if col_visible.package %}{{ sort_th('package', 'Package') }}{% endif %}
+      {% if col_visible.marking %}{{ sort_th('marking', 'Marking') }}{% endif %}
+      {% if col_visible.category %}{{ sort_th('category', 'Category') }}{% endif %}
+      {% if col_visible.characteristics %}<th>Characteristics</th>{% endif %}
+      {% if col_visible.description %}<th>Description</th>{% endif %}
+      {{ sort_th('qty', 'Stock', 'text-end') }}
+      {% if col_visible.unit_price %}{{ sort_th('price', 'Unit Price', 'text-end') }}{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in parts %}
+    <tr>
+      <td><input type="checkbox" class="form-check-input part-select-checkbox" value="{{ p.id }}"></td>
+      {% if col_visible.thumbnail %}
+      <td>
+        {% if p.photos %}
+        <a href="{{ url_for('parts.detail', part_id=p.id) }}">
+          <img src="{{ url_for('parts.uploaded_file', rel_path=p.photos[0].thumbnail_path or p.photos[0].file_path) }}" alt="" class="rounded" style="width: 2.5em; height: 2.5em; object-fit: cover;">
+        </a>
+        {% else %}
+        <span class="text-secondary">-</span>
+        {% endif %}
+      </td>
+      {% endif %}
+      <td><a href="{{ url_for('parts.detail', part_id=p.id) }}" class="mpn-link" data-part-id="{{ p.id }}">{{ p.mpn }}</a>
+        <a href="{{ url_for('parts.edit', part_id=p.id) }}" class="text-secondary ms-1" title="Edit &quot;{{ p.mpn }}&quot;" style="font-size: 0.8em;"><i class="bi bi-pencil"></i></a>
+        {% if p.is_suspect_fake %}<span class="badge badge-fake ms-1">Suspect counterfeit</span>{% endif %}
+      </td>
+      {% if col_visible.location %}
+      {% set locs = p.location_codes %}
+      <td>
+        {{ locs[0] if locs else '-' }}
+        {% if locs|length > 1 %}
+        <span class="badge text-bg-secondary" title="Also in: {{ locs[1:]|join(', ') }}">+{{ locs|length - 1 }}</span>
+        {% endif %}
+      </td>
+      {% endif %}
+      {% if col_visible.manufacturer %}<td>{{ p.manufacturer or '-' }}</td>{% endif %}
+      {% if col_visible.package %}<td>{{ p.package or '-' }}</td>{% endif %}
+      {% if col_visible.marking %}<td>{{ p.marking or '-' }}</td>{% endif %}
+      {% if col_visible.category %}<td>{{ p.category.name if p.category else 'Uncategorized' }}</td>{% endif %}
+      {% if col_visible.characteristics %}
+      {% set summary = p.attr_summary(collapsed_attr_ids) %}
+      <td class="text-truncate" style="max-width: 160px;" title="{{ summary or '' }}">{{ summary or '-' }}</td>
+      {% endif %}
+      {% if col_visible.description %}<td class="text-truncate" style="max-width: 220px;">{{ p.description or '-' }}</td>{% endif %}
+      <td class="text-end">
+        <span class="{{ 'text-danger' if p.total_quantity <= 0 else '' }}">{{ p.total_quantity|qty }}</span>
+        {% if p.min_stock_alert is not none and p.total_quantity <= p.min_stock_alert %}
+        <i class="bi bi-exclamation-triangle-fill text-warning" title="Below alert threshold {{ p.min_stock_alert }}"></i>
+        {% endif %}
+      </td>
+      {% if col_visible.unit_price %}
+      {% set price_amount, price_currency = p.display_price %}
+      <td class="price-cell price-{{ (price_currency or '')|lower }}">
+        <div class="price-split">
+          <span class="batch-badge" {% if p.batch_count > 1 %}title="{{ p.batch_count }} batches on hand"{% endif %}>{% if p.batch_count > 1 %}&times;{{ p.batch_count }}{% endif %}</span>
+          <span class="price-amount">{{ price_amount|price }}</span><span class="price-currency">{{ price_currency or '' }}</span>
+        </div>
+      </td>
+      {% endif %}
+    </tr>
+    {% else %}
+    <tr><td colspan="{{ empty_colspan }}" class="text-center text-secondary py-4">No matching parts found</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% for p in parts %}
+{% set rows = [] %}
+{% if p.category %}
+{% set values_by_def = p.attribute_values_by_def %}
+{% for ad in p.category.effective_attribute_defs %}
+  {% set v = values_by_def.get(ad.id) %}
+  {% if v %}
+    {% set text = p.format_attr_piece(ad, v) %}
+    {% if text %}{% set _ = rows.append((ad, text)) %}{% endif %}
+  {% endif %}
+{% endfor %}
+{% endif %}
+{% if rows or p.photos %}
+<template class="attr-hover-tpl" data-part-id="{{ p.id }}">
+  {% if p.photos %}
+  <img src="{{ url_for('parts.uploaded_file', rel_path=p.photos[0].thumbnail_path or p.photos[0].file_path) }}" alt="" class="rounded mb-2 attr-hover-thumb">
+  {% endif %}
+  {% if rows %}
+  <div class="attr-hover-title">{{ p.category.name }}</div>
+  <table class="table table-sm table-borderless mb-0">
+    {% for ad, text in rows %}
+    <tr><td class="text-secondary pe-2 py-0">{{ ad|attr_label }}</td><td class="py-0">{{ text }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</template>
+{% endif %}
+{% endfor %}
+
+<div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+  <div>
+    {% if total_pages > 1 %}
+    <nav>
+      <ul class="pagination mb-0">
+        {% for pnum in page_window(page, total_pages) %}
+        {% if pnum %}
+        <li class="page-item {{ 'active' if pnum == page }}">
+          <a class="page-link" href="{{ url_for('parts.index', **dict(filters.to_dict(flat=False), page=pnum)) }}">{{ pnum }}</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+        {% endif %}
+        {% endfor %}
+      </ul>
+    </nav>
+    {% endif %}
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <label for="pageSizeSelect" class="text-secondary small mb-0 text-nowrap">Per page</label>
+    <select id="pageSizeSelect" class="form-select form-select-sm" style="width: 5.5em;">
+      {% for n in page_size_options %}
+      <option value="{{ n }}" {{ 'selected' if page_size == n }}>{{ n }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var hoverBox = document.createElement('div');
+  hoverBox.id = 'attrHoverBox';
+  hoverBox.className = 'card shadow-sm attr-hover-box d-none';
+  document.body.appendChild(hoverBox);
+
+  var showTimer = null;
+  var hideTimer = null;
+
+  function positionNear(link) {
+    var rect = link.getBoundingClientRect();
+    var top = rect.bottom + window.scrollY + 4;
+    var left = rect.left + window.scrollX;
+    var maxLeft = window.scrollX + document.documentElement.clientWidth - hoverBox.offsetWidth - 8;
+    if (left > maxLeft) left = Math.max(8, maxLeft);
+    var maxTop = window.scrollY + window.innerHeight - hoverBox.offsetHeight - 8;
+    if (top > maxTop) top = Math.max(8, rect.top + window.scrollY - hoverBox.offsetHeight - 4);
+    hoverBox.style.top = top + 'px';
+    hoverBox.style.left = left + 'px';
+  }
+
+  function hide() {
+    hoverBox.classList.add('d-none');
+  }
+
+  document.querySelectorAll('.mpn-link').forEach(function (link) {
+    var tpl = document.querySelector('.attr-hover-tpl[data-part-id="' + link.dataset.partId + '"]');
+    if (!tpl) return;
+    link.addEventListener('mouseenter', function () {
+      clearTimeout(hideTimer);
+      showTimer = setTimeout(function () {
+        hoverBox.innerHTML = tpl.innerHTML;
+        hoverBox.classList.remove('d-none');
+        positionNear(link);
+        var img = hoverBox.querySelector('img');
+        if (img && !img.complete) {
+          img.addEventListener('load', function () { positionNear(link); }, { once: true });
+        }
+      }, 250);
+    });
+    link.addEventListener('mouseleave', function () {
+      clearTimeout(showTimer);
+      hideTimer = setTimeout(hide, 150);
+    });
+  });
+
+  hoverBox.addEventListener('mouseenter', function () { clearTimeout(hideTimer); });
+  hoverBox.addEventListener('mouseleave', function () { hideTimer = setTimeout(hide, 150); });
+})();
+
+document.getElementById('includeSubCheck').addEventListener('change', function () {
+  document.getElementById('includeSubHidden').value = this.checked ? '1' : '0';
+});
+
+document.getElementById('pageSizeSelect').addEventListener('change', function () {
+  var pageSize = this.value;
+  fetch('{{ url_for("settings.quick_page_size") }}', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': window.CSRF_TOKEN || '',
+    },
+    body: JSON.stringify({ page_size: parseInt(pageSize, 10) }),
+  }).catch(function () {}).finally(function () {
+    var params = new URLSearchParams(window.location.search);
+    params.set('page_size', pageSize);
+    params.set('page', '1');
+    window.location.search = params.toString();
+  });
+});
+
+(function () {
+  var selectAll = document.getElementById('selectAllCheckbox');
+  var rowChecks = Array.prototype.slice.call(document.querySelectorAll('.part-select-checkbox'));
+  var bulkBtn = document.getElementById('bulkEditBtn');
+  var countSpan = document.getElementById('bulkSelectedCount');
+  var bulkForm = document.getElementById('bulkEditForm');
+  var cartBtn = document.getElementById('bulkCartBtn');
+  var cartCountSpan = document.getElementById('bulkCartCount');
+  var cartForm = document.getElementById('bulkCartForm');
+
+  function updateBulkState() {
+    var checked = rowChecks.filter(function (c) { return c.checked; });
+    countSpan.textContent = checked.length;
+    bulkBtn.disabled = checked.length === 0;
+    cartCountSpan.textContent = checked.length;
+    cartBtn.disabled = checked.length === 0;
+    if (selectAll) {
+      selectAll.checked = checked.length > 0 && checked.length === rowChecks.length;
+      selectAll.indeterminate = checked.length > 0 && checked.length < rowChecks.length;
+    }
+  }
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      rowChecks.forEach(function (c) { c.checked = selectAll.checked; });
+      updateBulkState();
+    });
+  }
+  rowChecks.forEach(function (c) { c.addEventListener('change', updateBulkState); });
+  updateBulkState();
+
+  function submitWithSelection(form) {
+    var checked = rowChecks.filter(function (c) { return c.checked; });
+    if (!checked.length) return;
+    form.querySelectorAll('input[name="part_ids"]').forEach(function (el) { el.remove(); });
+    checked.forEach(function (c) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'part_ids';
+      input.value = c.value;
+      form.appendChild(input);
+    });
+    form.submit();
+  }
+
+  bulkBtn.addEventListener('click', function () {
+    submitWithSelection(bulkForm);
+  });
+  cartBtn.addEventListener('click', function () {
+    submitWithSelection(cartForm);
+  });
+})();
+
+(function () {
+  document.querySelectorAll('.attr-filter-select').forEach(function (sel) {
+    var box = sel.closest('.attr-filter-box');
+    var toggle = box.querySelector('.attr-active-toggle');
+    var searchInput = box.querySelector('.attr-search-input');
+
+    function refresh() {
+      var n = sel.selectedOptions.length;
+      box.classList.toggle('attr-filter-box--active', n > 0);
+      toggle.checked = n > 0;
+    }
+
+    sel.addEventListener('change', refresh);
+    // The checkbox is a status indicator, not a free-standing control: it
+    // only ever reflects "does this box have a selection". Clicking it to
+    // uncheck clears that selection; clicking it to check (with nothing
+    // selected) has nothing to actually do, so it just snaps back off.
+    toggle.addEventListener('change', function () {
+      if (!toggle.checked) {
+        Array.prototype.forEach.call(sel.options, function (o) { o.selected = false; });
+      }
+      refresh();
+    });
+
+    if (searchInput) {
+      searchInput.addEventListener('input', function () {
+        var q = searchInput.value.trim().toLowerCase();
+        Array.prototype.forEach.call(sel.options, function (o) {
+          o.hidden = !!q && o.textContent.toLowerCase().indexOf(q) === -1;
+        });
+      });
+    }
+  });
+})();
+</script>
+{% endblock %}

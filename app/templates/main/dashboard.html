@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Bindex{% endblock %}
+{% block content %}
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Part Types</div>
+        <div class="fs-2 fw-semibold">{{ total_parts }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Total Stock Quantity</div>
+        <div class="fs-2 fw-semibold">{{ total_qty|qty }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Category Nodes</div>
+        <div class="fs-2 fw-semibold">{{ category_count }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Uncategorized Parts</div>
+        <div class="fs-2 fw-semibold">{{ uncategorized_count }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">Low Stock Alerts</div>
+      <div class="card-body">
+        {% if low_stock %}
+        <ul class="list-group list-group-flush">
+          {% for p in low_stock %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <a href="{{ url_for('parts.detail', part_id=p.id) }}">{{ p.mpn }}</a>
+            <span class="text-nowrap">
+              <i class="bi bi-exclamation-triangle-fill text-warning" title="Below alert threshold {{ p.min_stock_alert }}"></i>
+              <span class="text-secondary small">{{ p.total_quantity|qty }} / {{ p.min_stock_alert }}</span>
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-secondary mb-0">No parts below their alert threshold.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        Recent Stock Activity
+        <a class="small" href="{{ url_for('stock.transactions') }}">View all</a>
+      </div>
+      <div class="card-body">
+        {% if recent_tx %}
+        <ul class="list-group list-group-flush">
+          {% for t in recent_tx %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>
+              <a href="{{ url_for('parts.detail', part_id=t.part_id) }}">{{ t.part.mpn }}</a>
+              <span class="text-secondary small">{{ t.type }}</span>
+            </span>
+            <span class="{{ 'text-success' if t.quantity_delta > 0 else 'text-danger' }}">
+              {{ '+%d'|format(t.quantity_delta) if t.quantity_delta > 0 else t.quantity_delta }}
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-secondary mb-0">No records yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

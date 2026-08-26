@@ -1,0 +1,27 @@
+[Unit]
+Description=Bindex (Flask/gunicorn)
+After=network.target
+
+[Service]
+User=bindex          # the account that owns /opt/bindex
+WorkingDirectory=/opt/bindex
+EnvironmentFile=/opt/bindex/.env
+
+ExecStart=/opt/bindex/.venv/bin/gunicorn \
+    --workers 3 \
+    --bind 127.0.0.1:8000 \
+    --access-logfile - \
+    --error-logfile - \
+    wsgi:app
+
+Restart=on-failure
+RestartSec=5
+
+# Basic hardening — the app only needs to read/write its own directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/bindex/instance
+
+[Install]
+WantedBy=multi-user.target
