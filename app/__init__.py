@@ -228,6 +228,27 @@ def register_cli(app):
         with app.app_context():
             run_fetch(currency=currency or None, limit=limit, force=force, dry_run=dry_run)
 
+    @app.cli.command("import-lcsc")
+    @click.argument("paths", nargs=-1, required=True)
+    @click.option("--skip-order", multiple=True, help="Order number (WM...) to leave out entirely, e.g. one already in stock")
+    @click.option("--exclude", multiple=True, help="LCSC part number (C...) to leave out, e.g. something that isn't inventory")
+    @click.option("--location", default="Unshelved", show_default=True, help="Top-level staging location the new batches go into (created if missing)")
+    @click.option("--operator", default=None, help="Username to record as the operator on the stock-in transactions")
+    @click.option("--no-photos", is_flag=True, help="Don't attach LCSC product photos")
+    @click.option("--no-datasheets", is_flag=True, help="Don't download and attach LCSC datasheet PDFs")
+    @click.option("--report", type=click.Path(dir_okay=False), default=None, help="Write a per-row CSV of what was (or would be) done")
+    @click.option("--dry-run", is_flag=True, help="Fetch from LCSC and report, but don't write to the database or download photos")
+    def import_lcsc_cmd(paths, skip_order, exclude, location, operator, no_photos, no_datasheets, report, dry_run):
+        """Import parts and stock from LCSC order CSV exports (see scripts/import_lcsc.py)."""
+        from scripts.import_lcsc import run_import
+
+        with app.app_context():
+            run_import(
+                paths, skip_orders=set(skip_order), exclude=set(exclude), location_name=location,
+                operator=operator, photos=not no_photos, datasheets=not no_datasheets, report_path=report,
+                dry_run=dry_run,
+            )
+
     @app.cli.command("update-exchange-rates")
     @click.option("--force", is_flag=True, help="Refresh even if the cached rates aren't stale yet")
     def update_exchange_rates_cmd(force):

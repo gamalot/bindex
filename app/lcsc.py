@@ -9,6 +9,9 @@ product — no browser session or login needed, a plain HTTP request is enough.
 
 Used by both the `flask fetch-lcsc-photos` batch command (scripts/fetch_lcsc_photos.py)
 and the "Search LCSC" button on the part edit page (app/blueprints/parts/routes.py).
+`fetch_product` (the full record by LCSC code, parameters included) backs the
+`flask import-lcsc` order importer (scripts/import_lcsc.py), along with
+`download_lcsc_datasheet` for the record's `pdfUrl`.
 """
 import json
 import re
@@ -19,6 +22,7 @@ import urllib.request
 SEARCH_URL = "https://wmsc.lcsc.com/ftps/wm/search/v3/global"
 CATALOG_URL = "https://wmsc.lcsc.com/ftps/wm/search/third/catalog"
 PRODUCT_PAGE_URL = "https://www.lcsc.com/product-image/{code}.html"
+PRODUCT_DETAIL_URL = "https://www.lcsc.com/product-detail/{code}.html"
 ALLOWED_IMAGE_HOST = "assets.lcsc.com"
 HEADERS = {
     "Content-Type": "application/json;charset=UTF-8",
@@ -110,6 +114,32 @@ def _fetch_product_detail(code):
     }
 
 
+def fetch_product(code):
+    """Full product record for an LCSC code (e.g. "C317180"): category,
+    brand, package, image URLs, datasheet URL and the parametric table
+    (`paramVOList`). The product-detail page server-renders the record as
+    a plain JSON object inside its Nuxt payload, so this finds the object
+    that holds `paramVOList` and decodes it whole. Raises ValueError when
+    the page carries no such record (some listings, e.g. spare fuses sold
+    as accessories, have no detail page)."""
+    html = _http_get(PRODUCT_DETAIL_URL.format(code=code)).decode("utf-8", errors="replace")
+    anchor = html.find('"paramVOList"')
+    if anchor < 0:
+        raise ValueError(f"No product record on the LCSC detail page for {code}")
+    decoder = json.JSONDecoder()
+    start = anchor
+    while True:
+        start = html.rfind("{", 0, start)
+        if start < 0:
+            raise ValueError(f"Couldn't decode the LCSC product record for {code}")
+        try:
+            obj, end = decoder.raw_decode(html, start)
+        except ValueError:
+            continue
+        if end > anchor and "paramVOList" in obj:
+            return obj
+
+
 def search_suggestions(keyword, limit=5):
     """When there's no exact match, return up to `limit` distinct candidate
     products (with photos) for the user to pick from, mirroring what LCSC's
@@ -168,3 +198,18 @@ def download_lcsc_image(url):
         ext = "jpg"
     content = _http_get(url)
     return content, ext
+
+
+def download_lcsc_datasheet(url):
+    """Download the PDF a product record's `pdfUrl` points at. Returns the
+    file's bytes. Usually that's LCSC's own copy on datasheet.lcsc.com, but
+    some listings link the manufacturer's site instead, so any https host
+    is accepted — the URL comes from LCSC's record, never from a client.
+    Refuses anything that isn't actually a PDF (a missing file comes back
+    as an HTML error page with a 200)."""
+    if urllib.parse.urlparse(url).scheme != "https":
+        raise ValueError(f"Refusing to fetch datasheet over a non-https URL: {url}")
+    content = _http_get(url)
+    if not content.startswith(b"%PDF"):
+        raise ValueError(f"Not a PDF: {url}")
+    return content
