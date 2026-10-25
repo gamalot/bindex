@@ -85,6 +85,7 @@ CATEGORY_MAP = {
     "Film Capacitors": ("Passive Components", "Capacitors", "Film Capacitors"),
     "Tantalum Capacitors": ("Passive Components", "Capacitors", "Tantalum Capacitors"),
     "Aluminum - Polymer Capacitors": ("Passive Components", "Capacitors", "Polymer Solid Capacitors"),
+    "Aluminum Electrolytic Capacitors": ("Passive Components", "Capacitors", "Aluminum Electrolytic Capacitor"),
     "Fixed Inductors": ("Passive Components", "Inductors & Ferrite", "Inductors"),
     "Ferrite Beads": ("Passive Components", "Inductors & Ferrite", "Ferrite Beads"),
     "Common Mode Chokes": ("Passive Components", "Inductors & Ferrite", "Common Mode Choke"),
